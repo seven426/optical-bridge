@@ -102,6 +102,11 @@ video { display: block; width: 100%; }
     <div class="heatmap" id="heatmap"></div>
   </div>
 
+  <div class="missing-section" id="recentSection" style="display:none;">
+    <h3>Recent Frames <span style="font-weight:400;font-size:11px;color:#888;">(last 20 recognized IDs)</span></h3>
+    <div class="missing-frames" id="recentFrames" style="color:#4caf50;"></div>
+  </div>
+
   <div class="missing-section" id="missingSection" style="display:none;">
     <h3>Missing Frames (copy to tell sender)</h3>
     <div class="missing-frames" id="missingFrames"></div>
@@ -146,6 +151,7 @@ video { display: block; width: 100%; }
       btnStart.style.display = 'none';
       document.getElementById('statsSection').style.display = 'grid';
       document.getElementById('heatmapSection').style.display = 'block';
+      document.getElementById('recentSection').style.display = 'block';
       document.getElementById('missingSection').style.display = 'block';
 
       Receiver.init();
@@ -219,9 +225,16 @@ video { display: block; width: 100%; }
     scanTimer = requestAnimationFrame(scan);
   }
 
+  var recentIds = [];
+
   function handleResult(result) {
     if (result.status === 'new') {
       flashIndicator('success');
+      // Track recent frame ID
+      if (result.frameIdx !== undefined) {
+        recentIds.push(result.frameIdx);
+        if (recentIds.length > 20) recentIds.shift();
+      }
     } else if (result.status === 'complete') {
       flashIndicator('success');
       completeFile = result;
@@ -251,6 +264,9 @@ video { display: block; width: 100%; }
     document.getElementById('statReceived').textContent = stats.received + '/' + displayExpected;
     document.getElementById('statBlocks').textContent = stats.blocksReady + '/' + stats.totalBlocks;
     document.getElementById('statRecovered').textContent = stats.blocksReady;
+
+    // Recent frame IDs
+    document.getElementById('recentFrames').textContent = recentIds.join(', ') || '(none)';
 
     var missing = Receiver.getMissingFrames();
     document.getElementById('statMissing').textContent = missing.size;
