@@ -166,7 +166,7 @@ video { display: block; width: 100%; }
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     var scanTick = 0;
-    var SCAN_EVERY_N = 3;  // throttle jsQR to ~20fps (60/3)
+    var SCAN_EVERY_N = 2;  // throttle jsQR to ~30fps
 
     function scan() {
       if (!scanning) return;
@@ -179,15 +179,22 @@ video { display: block; width: 100%; }
       }
 
       if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
-        // Only resize canvas when dimensions change
-        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+        // Downscale to max 640px for jsQR performance
+        var MAX_SCAN_DIM = 640;
+        var scaleX = Math.min(1, MAX_SCAN_DIM / video.videoWidth);
+        var scaleY = Math.min(1, MAX_SCAN_DIM / video.videoHeight);
+        var scale = Math.min(scaleX, scaleY);
+        var scanW = Math.floor(video.videoWidth * scale);
+        var scanH = Math.floor(video.videoHeight * scale);
+
+        if (canvas.width !== scanW || canvas.height !== scanH) {
+          canvas.width = scanW;
+          canvas.height = scanH;
         }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, scanW, scanH);
 
         try {
-          var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var imageData = ctx.getImageData(0, 0, scanW, scanH);
           var qrData = jsQR(imageData.data, imageData.width, imageData.height);
 
         if (qrData && qrData.data) {
