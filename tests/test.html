@@ -269,6 +269,60 @@ for (let i = 1; i < 256; i++) {
 	  var missing = Receiver.getMissingFrames();
 	  assert(missing.size === 0, 'Receiver no missing frames after complete');
 	})();
+
+	// Full roundtrip tests with simulated frame loss
+	(async function fullRoundtrip() {
+	  // Test 1: 10% loss with K=5,N=1
+	  var testData = new Uint8Array(10000);
+	  for (var i = 0; i < 10000; i++) testData[i] = Math.floor(Math.random() * 256);
+	  var blob = new Blob([testData], { type: 'application/octet-stream' });
+	  var file = new File([blob], 'random.bin');
+
+	  await Sender.prepareFile(file, { qrVersion: 40, ecLevel: 'M', fecK: 5, fecN: 1 });
+	  var frames = Sender.generateFrames();
+
+	  Receiver.init();
+	  var lossRate = 0.10;
+	  for (var i = 0; i < frames.length; i++) {
+	    if (Math.random() < lossRate) continue;
+	    var result = Receiver.ingestFrame(frames[i]);
+	    if (result.status === 'complete') {
+	      assert(result.sha256Verified, 'Roundtrip 10% loss SHA-256 verified');
+	      assert(result.filename === 'random.bin', 'Roundtrip 10% loss filename');
+	      break;
+	    }
+	    // If ingestFrame returned a Promise for complete status, check
+	    if (result && typeof result.then === 'function') {
+	      result = await result;
+	      if (result.status === 'complete') {
+	        assert(result.sha256Verified, 'Roundtrip 10% loss SHA-256 verified (async)');
+	        break;
+	      }
+	    }
+	  }
+
+	  // Test 2: 25% loss with stronger FEC (K=4,N=2)
+	  var testData2 = new Uint8Array(8000);
+	  for (var i = 0; i < 8000; i++) testData2[i] = Math.floor(Math.random() * 256);
+	  var blob2 = new Blob([testData2]);
+	  var file2 = new File([blob2], 'random2.bin');
+
+	  await Sender.prepareFile(file2, { qrVersion: 40, ecLevel: 'M', fecK: 4, fecN: 2 });
+	  var frames2 = Sender.generateFrames();
+
+	  Receiver.init();
+	  for (var i = 0; i < frames2.length; i++) {
+	    if (Math.random() < 0.25) continue;
+	    var result = Receiver.ingestFrame(frames2[i]);
+	    if (result && typeof result.then === 'function') {
+	      result = await result;
+	    }
+	    if (result.status === 'complete') {
+	      assert(result.sha256Verified, 'Roundtrip 25% loss with K=4,N=2 verified');
+	      break;
+	    }
+	  }
+	})();
 </script>
 <script>
 const summary = document.createElement('div');
