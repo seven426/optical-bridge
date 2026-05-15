@@ -46,6 +46,51 @@ for (let i = 1; i < 256; i++) {
   const inv = GF256.inverse(i);
   assert(GF256.mul(i, inv) === 1, 'GF256 inverse roundtrip ' + i);
 }
+// FrameProtocol tests
+(function() {
+  const payload = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+  const frame = FrameProtocol.packFrame({
+    fileId: 1, frameIdx: 42, totalFrames: 500,
+    fecGroup: 8, fecGroupSize: 6, payload
+  });
+
+  assert(frame.length === 14 + 4, 'packFrame correct length');
+  assert(frame[0] === 0x4F && frame[1] === 0x42, 'packFrame magic bytes');
+
+  const unpacked = FrameProtocol.unpackFrame(frame);
+  assert(unpacked !== null, 'unpackFrame non-null');
+  assert(unpacked.fileId === 1, 'unpackFrame fileId');
+  assert(unpacked.frameIdx === 42, 'unpackFrame frameIdx');
+  assert(unpacked.totalFrames === 500, 'unpackFrame totalFrames');
+  assert(unpacked.fecGroup === 8, 'unpackFrame fecGroup');
+  assert(unpacked.fecGroupSize === 6, 'unpackFrame fecGroupSize');
+  assert(unpacked.payloadLen === 4, 'unpackFrame payloadLen');
+  assert(unpacked.payload[0] === 0x01, 'unpackFrame payload byte 0');
+
+  // Bad magic
+  const bad = new Uint8Array([0x00, 0x00, 0,0,0,0,0,0,0,0,0,0,0,0]);
+  assert(FrameProtocol.unpackFrame(bad) === null, 'unpackFrame bad magic');
+
+  // Too short
+  assert(FrameProtocol.unpackFrame(new Uint8Array([0x4F])) === null, 'unpackFrame too short');
+
+  // Metadata roundtrip
+  const sha256bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) sha256bytes[i] = i;
+  const metaPayload = FrameProtocol.buildMetadataPayload({
+    filename: 'test.pdf', fileSize: 1234567,
+    sha256: sha256bytes, totalDataFrames: 500, fecK: 5, fecN: 1
+  });
+  const parsed = FrameProtocol.parseMetadataPayload(metaPayload);
+  assert(parsed !== null, 'metadata roundtrip non-null');
+  assert(parsed.filename === 'test.pdf', 'metadata filename');
+  assert(parsed.fileSize === 1234567, 'metadata fileSize');
+  assert(parsed.totalDataFrames === 500, 'metadata totalDataFrames');
+  assert(parsed.fecK === 5 && parsed.fecN === 1, 'metadata FEC params');
+  for (let i = 0; i < 32; i++) {
+    assert(parsed.sha256[i] === i, 'metadata sha256[' + i + ']');
+  }
+})();
 </script>
 <script>
 const summary = document.createElement('div');
