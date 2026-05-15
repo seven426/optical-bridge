@@ -240,9 +240,8 @@ input[type=file] { display: none; }
       var info = await Sender.prepareFile(file, settings);
 
       fileInfo.innerHTML =
-        '<div class="row"><span class="key">Filename</span><span class="val">' + esc(info.filename) + '</span></div>' +
         '<div class="row"><span class="key">Size</span><span class="val">' + formatSize(info.fileSize) + '</span></div>' +
-        '<div class="row"><span class="key">SHA-256</span><span class="val" style="font-size:10px;">' + info.sha256hex + '</span></div>' +
+        '<div class="row"><span class="key">SHA-256</span><span class="val" style="font-size:10px;word-break:break-all;">' + info.sha256hex + '</span></div>' +
         '<div class="row"><span class="key">Frames</span><span class="val">' + info.totalDataFrames + ' data + FEC = ' + info.totalFrames + ' total</span></div>' +
         '<div class="row"><span class="key">QR</span><span class="val">V' + info.qrVersion + ', EC-' + info.ecLevel + '</span></div>' +
         '<div class="row"><span class="key">FEC</span><span class="val">K=' + info.fecK + ', N=' + info.fecN + '</span></div>' +

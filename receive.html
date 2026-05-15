@@ -114,6 +114,8 @@ video { display: block; width: 100%; }
 
   <div class="download-section" id="downloadSection">
     <div class="status" id="downloadStatus"></div>
+    <div id="sha256Display" style="font-size:10px;word-break:break-all;color:#888;margin:8px 0;display:none;"></div>
+    <input id="filenameInput" placeholder="Enter filename to save as" style="display:none;width:100%;padding:8px;background:#fff;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:8px;">
     <button class="btn btn-primary" id="btnDownload" style="display:none;">Download File</button>
   </div>
 </div>
@@ -330,20 +332,26 @@ video { display: block; width: 100%; }
 
   function showDownload(result) {
     downloadSection.classList.add('show');
-    if (result.sha256Verified) {
-      downloadStatus.className = 'status ok';
-      downloadStatus.textContent = 'SHA-256 verified — file ready';
-    } else {
-      downloadStatus.className = 'status warn';
-      downloadStatus.textContent = 'SHA-256 mismatch! File may be corrupted.';
-    }
+    downloadStatus.className = 'status ok';
+    downloadStatus.textContent = 'File ready — compare SHA-256 with sender';
+
+    // Show SHA-256
+    var shaDiv = document.getElementById('sha256Display');
+    shaDiv.style.display = 'block';
+    shaDiv.textContent = 'SHA-256: ' + (result.sha256hex || '');
+
+    // Show filename input
+    var fnInput = document.getElementById('filenameInput');
+    fnInput.style.display = 'block';
+
     btnDownload.style.display = 'block';
     btnDownload.onclick = function() {
+      var filename = fnInput.value.trim() || 'received_file';
       var blob = new Blob([result.bytes], { type: 'application/octet-stream' });
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = url;
-      a.download = result.filename;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     };
