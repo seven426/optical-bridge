@@ -282,7 +282,7 @@ input[type=file] { display: none; }
 
   selectInput.addEventListener('input', function() {
     var state = Sender.getState();
-    var maxFrame = state ? state.totalDataFrames : undefined;
+    var maxFrame = state ? state.totalFrames : undefined;
     var selSet = FrameRange.parse(selectInput.value, maxFrame);
     Sender.setSelectMode(selSet);
     cycleFrames = Sender.getCycleFrames();
