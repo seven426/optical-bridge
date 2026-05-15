@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OpticalBridge Tests</title>
+<style>
+body { font-family: monospace; max-width: 900px; margin: 20px auto; background: #111; color: #eee; }
+.pass { color: #4caf50; } .fail { color: #f44336; }
+.result { margin: 4px 0; padding: 4px 8px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>OpticalBridge Tests</h1>
+<div id="results"></div>
+
+<script src="../lib/gf256.js"></script>
+<script src="../lib/frame-protocol.js"></script>
+<script src="../lib/reed-solomon.js"></script>
+<script src="../lib/frame-range.js"></script>
+<script src="../lib/sender.js"></script>
+<script src="../lib/receiver.js"></script>
+<script>
+const results = document.getElementById('results');
+let passed = 0, failed = 0;
+
+function assert(cond, name) {
+  const el = document.createElement('div');
+  el.className = 'result';
+  if (cond) { passed++; el.innerHTML = '<span class="pass">PASS</span> ' + name; }
+  else { failed++; el.innerHTML = '<span class="fail">FAIL</span> ' + name; }
+  results.appendChild(el);
+}
+
+// Tests will be appended by subsequent tasks
+</script>
+<script>
+const summary = document.createElement('div');
+summary.style.marginTop = '16px';
+summary.style.fontWeight = 'bold';
+summary.textContent = `${passed} passed, ${failed} failed, ${passed + failed} total`;
+results.appendChild(summary);
+</script>
+</body>
+</html>
