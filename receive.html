@@ -165,17 +165,30 @@ video { display: block; width: 100%; }
     scanning = true;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
+    var scanTick = 0;
+    var SCAN_EVERY_N = 3;  // throttle jsQR to ~20fps (60/3)
 
     function scan() {
       if (!scanning) return;
+      scanTick++;
+
+      // Throttle: only scan every N frames to avoid CPU overload
+      if (scanTick % SCAN_EVERY_N !== 0) {
+        scanTimer = requestAnimationFrame(scan);
+        return;
+      }
 
       if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        // Only resize canvas when dimensions change
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        var qrData = jsQR(imageData.data, imageData.width, imageData.height);
+        try {
+          var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var qrData = jsQR(imageData.data, imageData.width, imageData.height);
 
         if (qrData && qrData.data) {
           var frameBytes;
@@ -217,6 +230,10 @@ video { display: block; width: 100%; }
             flashIndicator('fail');
           }
         }
+
+        } catch (e) {
+          // jsQR or imageData may fail on some frames; skip and continue
+        }
       }
 
       scanTimer = requestAnimationFrame(scan);
@@ -257,7 +274,12 @@ video { display: block; width: 100%; }
     }
   }
 
+  var uiUpdateTick = 0;
   function updateUI() {
+    uiUpdateTick++;
+    // Only update stats every tick; heatmap every 5th tick to reduce DOM churn
+    var updateHeatmap = (uiUpdateTick % 5 === 0);
+
     var stats = Receiver.getStats();
 
     var displayExpected = stats.expectedWithParity || stats.expected || '?';
@@ -272,17 +294,19 @@ video { display: block; width: 100%; }
     document.getElementById('statMissing').textContent = missing.size;
     missingFramesEl.textContent = FrameRange.format(missing) || '(none)';
 
-    // Heatmap - include parity frames
-    var totalDisplay = stats.expectedWithParity || stats.expected;
-    if (totalDisplay) {
-      var html = '';
-      for (var i = 0; i < totalDisplay; i++) {
-        var isParity = stats.expected && i >= stats.expected;
-        var cls = missing.has(i) ? 'missing' : (isParity ? 'parity' : 'received');
-        var title = 'Frame ' + i + (isParity ? ' (parity)' : '');
-        html += '<span class="heatmap-cell ' + cls + '" title="' + title + '"></span>';
+    // Heatmap - include parity frames (throttled)
+    if (updateHeatmap) {
+      var totalDisplay = stats.expectedWithParity || stats.expected;
+      if (totalDisplay) {
+        var html = '';
+        for (var i = 0; i < totalDisplay; i++) {
+          var isParity = stats.expected && i >= stats.expected;
+          var cls = missing.has(i) ? 'missing' : (isParity ? 'parity' : 'received');
+          var title = 'Frame ' + i + (isParity ? ' (parity)' : '');
+          html += '<span class="heatmap-cell ' + cls + '" title="' + title + '"></span>';
+        }
+        heatmap.innerHTML = html;
       }
-      heatmap.innerHTML = html;
     }
 
     if (stats.complete) {
