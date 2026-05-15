@@ -367,7 +367,7 @@ input[type=file] { display: none; }
 
       var unpacked = FrameProtocol.unpackFrame(frame);
       var frameIdx = unpacked ? unpacked.frameIdx : '?';
-      var total = state.totalDataFrames || '?';
+      var total = state.totalFrames || state.totalDataFrames || '?';
 
       document.getElementById('statFrame').textContent = frameIdx + '/' + total;
       if (total !== '?') {
