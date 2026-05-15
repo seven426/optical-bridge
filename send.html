@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpticalBridge — Send</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #0d0d0d; color: #e0e0e0; min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+}
+header { padding: 16px; text-align: center; }
+header h1 { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
+header p { font-size: 12px; color: #888; margin-top: 4px; }
+
+.stage { display: none; width: 100%; max-width: 640px; padding: 20px; }
+.stage.active { display: block; }
+
+/* Stage 1: Drop zone */
+.drop-zone {
+  border: 2px dashed #444; border-radius: 12px;
+  padding: 48px 24px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: #4a9eff; background: rgba(74,158,255,0.05); }
+.drop-zone .icon { font-size: 40px; margin-bottom: 12px; }
+.drop-zone .label { font-size: 15px; color: #aaa; }
+.drop-zone .hint { font-size: 12px; color: #666; margin-top: 8px; }
+input[type=file] { display: none; }
+
+/* Settings */
+.settings { margin-top: 16px; background: #1a1a1a; border-radius: 8px; overflow: hidden; }
+.settings-toggle {
+  width: 100%; padding: 10px 16px; background: none; border: none; color: #aaa;
+  font-size: 13px; cursor: pointer; text-align: left;
+}
+.settings-toggle:hover { color: #fff; }
+.settings-body { display: none; padding: 8px 16px 16px; }
+.settings-body.open { display: block; }
+.setting-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; font-size: 13px; border-bottom: 1px solid #222;
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row label { color: #aaa; }
+.setting-row select { background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+
+/* File info */
+.file-info { background: #1a1a1a; border-radius: 8px; padding: 20px; }
+.file-info .row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #222; }
+.file-info .row:last-child { border-bottom: none; }
+.file-info .row .key { color: #888; }
+.file-info .row .val { color: #e0e0e0; font-family: monospace; font-size: 12px; }
+
+/* Buttons */
+.btn { display: block; width: 100%; margin-top: 16px; padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: #4a9eff; color: #fff; }
+.btn-stop { background: #e53935; color: #fff; }
+.btn-pause { background: #ff9800; color: #000; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* QR area */
+.qr-container { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.qr-wrapper { background: #fff; border-radius: 8px; padding: 16px; display: flex; align-items: center; justify-content: center; }
+.qr-wrapper canvas, .qr-wrapper img { display: block; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; }
+.stat { background: #1a1a1a; border-radius: 6px; padding: 10px; text-align: center; }
+.stat .value { font-size: 20px; font-weight: 700; color: #4a9eff; }
+.stat .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.controls { display: flex; gap: 8px; width: 100%; margin-top: 8px; }
+.controls .btn { flex: 1; margin-top: 0; font-size: 13px; padding: 10px; }
+
+/* Mode selector */
+.mode-selector { display: flex; gap: 4px; background: #1a1a1a; border-radius: 6px; padding: 3px; margin-bottom: 12px; }
+.mode-btn { flex: 1; padding: 6px 12px; border: none; border-radius: 4px; background: transparent; color: #888; font-size: 12px; cursor: pointer; }
+.mode-btn.active { background: #2a2a2a; color: #e0e0e0; }
+.select-input { width: 100%; padding: 8px 12px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-family: monospace; font-size: 13px; margin-bottom: 8px; }
+.select-info { font-size: 11px; color: #888; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpticalBridge — Send</h1>
+  <p>Air-gap file transfer via QR codes</p>
+</header>
+
+<div id="stage1" class="stage active">
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">+</div>
+    <div class="label">Drop file here or click to select</div>
+    <div class="hint">Any file type, up to ~10 MB</div>
+  </div>
+  <input type="file" id="fileInput">
+  <div class="settings">
+    <button class="settings-toggle" id="settingsToggle">Settings</button>
+    <div class="settings-body" id="settingsBody">
+      <div class="setting-row">
+        <label>Frame interval</label>
+        <select id="optInterval">
+          <option value="150">150 ms</option>
+          <option value="200" selected>200 ms</option>
+          <option value="250">250 ms</option>
+          <option value="300">300 ms</option>
+          <option value="500">500 ms</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>QR version</label>
+        <select id="optQRVersion">
+          <option value="0">Auto (by screen height)</option>
+          <option value="30">V30 (137x137)</option>
+          <option value="35">V35</option>
+          <option value="40">V40 (177x177)</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>FEC (K data + N parity)</label>
+        <select id="optFEC">
+          <option value="4,1">K=4, N=1 (25% redundancy)</option>
+          <option value="5,1" selected>K=5, N=1 (20% redundancy)</option>
+          <option value="4,2">K=4, N=2 (50% redundancy)</option>
+          <option value="8,2">K=8, N=2 (25% redundancy)</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>QR error correction</label>
+        <select id="optECLevel">
+          <option value="L">L (~7%)</option>
+          <option value="M" selected>M (~15%)</option>
+          <option value="Q">Q (~25%)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="stage2" class="stage">
+  <div class="file-info" id="fileInfo"></div>
+  <button class="btn btn-primary" id="btnStart">Start Transmission</button>
+  <button class="btn" style="background:#555;color:#fff;" id="btnBack">Back</button>
+</div>
+
+<div id="stage3" class="stage">
+  <div class="mode-selector" id="modeSelector">
+    <button class="mode-btn active" data-mode="all">All frames</button>
+    <button class="mode-btn" data-mode="select">Select frames</button>
+  </div>
+  <input class="select-input" id="selectInput" placeholder="Frame range: 42,87,120-125" style="display:none;">
+  <div class="select-info" id="selectInfo" style="display:none;"></div>
+  <div class="qr-container">
+    <div class="qr-wrapper" id="qrWrapper"></div>
+    <div class="stats">
+      <div class="stat"><div class="value" id="statFrame">-</div><div class="label">Frame</div></div>
+      <div class="stat"><div class="value" id="statProgress">-</div><div class="label">Progress</div></div>
+      <div class="stat"><div class="value" id="statRound">0</div><div class="label">Round</div></div>
+      <div class="stat"><div class="value" id="statElapsed">00:00</div><div class="label">Elapsed</div></div>
+    </div>
+    <div class="controls">
+      <button class="btn btn-pause" id="btnPause">Pause</button>
+      <button class="btn btn-stop" id="btnStop">Stop</button>
+    </div>
+  </div>
+</div>
+
+<script src="lib/gf256.js"></script>
+<script src="lib/frame-protocol.js"></script>
+<script src="lib/reed-solomon.js"></script>
+<script src="lib/frame-range.js"></script>
+<script src="lib/sender.js"></script>
+<script src="lib/qrcode.js"></script>
+<script>
+(function() {
+  // DOM refs
+  const stage1 = document.getElementById('stage1');
+  const stage2 = document.getElementById('stage2');
+  const stage3 = document.getElementById('stage3');
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileInfo = document.getElementById('fileInfo');
+  const btnStart = document.getElementById('btnStart');
+  const btnBack = document.getElementById('btnBack');
+  const btnPause = document.getElementById('btnPause');
+  const btnStop = document.getElementById('btnStop');
+  const qrWrapper = document.getElementById('qrWrapper');
+  const settingsToggle = document.getElementById('settingsToggle');
+  const settingsBody = document.getElementById('settingsBody');
+  const selectInput = document.getElementById('selectInput');
+  const selectInfo = document.getElementById('selectInfo');
+  const modeSelector = document.getElementById('modeSelector');
+
+  let timer = null;
+  let paused = false;
+  let roundCount = 0;
+  let cycleFrameIdx = 0;
+  let elapsedSec = 0;
+  let elapsedTimer = null;
+  let cycleFrames = null;
+
+  function showStage(n) {
+    stage1.classList.toggle('active', n === 1);
+    stage2.classList.toggle('active', n === 2);
+    stage3.classList.toggle('active', n === 3);
+  }
+
+  // File selection
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+  dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    var f = e.dataTransfer.files[0];
+    if (f) prepareAndShow(f);
+  });
+  fileInput.addEventListener('change', function() {
+    var f = fileInput.files[0];
+    if (f) prepareAndShow(f);
+  });
+
+  settingsToggle.addEventListener('click', function() { settingsBody.classList.toggle('open'); });
+
+  function getSettings() {
+    var qrVer = parseInt(document.getElementById('optQRVersion').value) || Sender.pickQRVersion();
+    var fecParts = document.getElementById('optFEC').value.split(',');
+    return {
+      frameInterval: parseInt(document.getElementById('optInterval').value),
+      qrVersion: qrVer,
+      fecK: parseInt(fecParts[0]),
+      fecN: parseInt(fecParts[1]),
+      ecLevel: document.getElementById('optECLevel').value
+    };
+  }
+
+  async function prepareAndShow(file) {
+    try {
+      var settings = getSettings();
+      var info = await Sender.prepareFile(file, settings);
+
+      fileInfo.innerHTML =
+        '<div class="row"><span class="key">Filename</span><span class="val">' + esc(info.filename) + '</span></div>' +
+        '<div class="row"><span class="key">Size</span><span class="val">' + formatSize(info.fileSize) + '</span></div>' +
+        '<div class="row"><span class="key">SHA-256</span><span class="val" style="font-size:10px;">' + info.sha256hex + '</span></div>' +
+        '<div class="row"><span class="key">Frames</span><span class="val">' + info.totalDataFrames + ' data + FEC = ' + info.totalFrames + ' total</span></div>' +
+        '<div class="row"><span class="key">QR</span><span class="val">V' + info.qrVersion + ', EC-' + info.ecLevel + '</span></div>' +
+        '<div class="row"><span class="key">FEC</span><span class="val">K=' + info.fecK + ', N=' + info.fecN + '</span></div>' +
+        '<div class="row"><span class="key">Est. time</span><span class="val">~' + info.estimatedSeconds + 's</span></div>';
+
+      Sender.generateFrames();
+      showStage(2);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  btnBack.addEventListener('click', function() { showStage(1); });
+
+  // Stage 3: Transmission
+  btnStart.addEventListener('click', startTransmission);
+  btnStop.addEventListener('click', stopTransmission);
+  btnPause.addEventListener('click', togglePause);
+
+  modeSelector.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('mode-btn')) return;
+    var buttons = modeSelector.querySelectorAll('.mode-btn');
+    for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
+    e.target.classList.add('active');
+    var mode = e.target.dataset.mode;
+    if (mode === 'select') {
+      selectInput.style.display = 'block';
+      selectInfo.style.display = 'block';
+      Sender.setSelectMode(new Set());
+    } else {
+      selectInput.style.display = 'none';
+      selectInfo.style.display = 'none';
+      Sender.setAllMode();
+    }
+    cycleFrames = Sender.getCycleFrames();
+    cycleFrameIdx = 0;
+  });
+
+  selectInput.addEventListener('input', function() {
+    var state = Sender.getState();
+    var maxFrame = state ? state.totalDataFrames : undefined;
+    var selSet = FrameRange.parse(selectInput.value, maxFrame);
+    Sender.setSelectMode(selSet);
+    cycleFrames = Sender.getCycleFrames();
+    cycleFrameIdx = 0;
+    selectInfo.textContent = selSet.size + ' frames selected';
+  });
+
+  function startTransmission() {
+    cycleFrames = Sender.getCycleFrames();
+    cycleFrameIdx = 0;
+    roundCount = 0;
+    paused = false;
+    btnPause.textContent = 'Pause';
+    showStage(3);
+    startDisplay();
+  }
+
+  function stopTransmission() {
+    if (timer) clearInterval(timer);
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    timer = null;
+    elapsedTimer = null;
+    qrWrapper.innerHTML = '';
+    showStage(1);
+  }
+
+  function togglePause() {
+    paused = !paused;
+    btnPause.textContent = paused ? 'Resume' : 'Pause';
+  }
+
+  function startDisplay() {
+    var state = Sender.getState();
+    elapsedSec = 0;
+    document.getElementById('statElapsed').textContent = '00:00';
+
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    elapsedTimer = setInterval(function() {
+      elapsedSec++;
+      var m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
+      var s = (elapsedSec % 60).toString().padStart(2, '0');
+      document.getElementById('statElapsed').textContent = m + ':' + s;
+    }, 1000);
+
+    showFrame();
+    if (timer) clearInterval(timer);
+    timer = setInterval(function() {
+      if (!paused) showFrame();
+    }, state.intervalMs);
+  }
+
+  function showFrame() {
+    if (!cycleFrames || cycleFrames.length === 0) return;
+
+    var state = Sender.getState();
+    var frame = cycleFrames[cycleFrameIdx];
+
+    // Render QR code using qrcodejs (davidshimjs)
+    // Convert binary Uint8Array to string for QR encoding
+    var strData = '';
+    for (var i = 0; i < frame.length; i++) {
+      strData += String.fromCharCode(frame[i]);
+    }
+
+    var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
+    qrWrapper.innerHTML = '';
+    new QRCode(qrWrapper, {
+      text: strData,
+      width: qrSize,
+      height: qrSize,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
+    });
+
+    var unpacked = FrameProtocol.unpackFrame(frame);
+    var frameIdx = unpacked ? unpacked.frameIdx : '?';
+    var total = state.totalDataFrames || '?';
+
+    document.getElementById('statFrame').textContent = frameIdx + '/' + total;
+    if (total !== '?') {
+      document.getElementById('statProgress').textContent = Math.round((parseInt(frameIdx) / parseInt(total)) * 100) + '%';
+    }
+
+    cycleFrameIdx++;
+    if (cycleFrameIdx >= cycleFrames.length) {
+      cycleFrameIdx = 0;
+      roundCount++;
+      document.getElementById('statRound').textContent = roundCount;
+    }
+  }
+
+  function esc(s) {
+    var el = document.createElement('span');
+    el.textContent = s;
+    return el.innerHTML;
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+  }
+})();
+</script>
+</body>
+</html>
