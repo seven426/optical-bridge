@@ -227,6 +227,48 @@ for (let i = 1; i < 256; i++) {
 	  assert(Sender.pickQRVersion() > 0, 'pickQRVersion returns valid version');
 	  assert(Sender.getQRPayloadCapacity(40, 'M') > 0, 'getQRPayloadCapacity returns valid capacity');
 	})();
+
+	// Receiver integration test
+	(async function() {
+	  // Roundtrip: encode -> decode (all frames)
+	  var testData = new Uint8Array(3000);
+	  for (var i = 0; i < 3000; i++) testData[i] = (i * 3 + 7) & 0xFF;
+	  var blob = new Blob([testData], { type: 'application/octet-stream' });
+	  var file = new File([blob], 'test.bin');
+
+	  await Sender.prepareFile(file, { qrVersion: 40, ecLevel: 'M', fecK: 5, fecN: 1 });
+	  var frames = Sender.generateFrames();
+
+	  Receiver.init();
+	  var lastResult = null;
+	  for (var i = 0; i < frames.length; i++) {
+	    var result = Receiver.ingestFrame(frames[i]);
+	    lastResult = result;
+	    if (result.status === 'complete') break;
+	  }
+
+	  assert(lastResult.status === 'complete', 'Receiver complete after all frames');
+	  assert(lastResult.sha256Verified, 'Receiver SHA-256 verified');
+	  assert(lastResult.filename === 'test.bin', 'Receiver correct filename');
+
+	  // Test with frame loss + FEC recovery (skip frame index 3)
+	  Receiver.reset();
+	  await Sender.prepareFile(file, { qrVersion: 40, ecLevel: 'M', fecK: 5, fecN: 1 });
+	  frames = Sender.generateFrames();
+
+	  var skipIdx = 3;
+	  for (var i = 0; i < frames.length; i++) {
+	    if (i === skipIdx) continue;
+	    var result = Receiver.ingestFrame(frames[i]);
+	    if (result.status === 'complete') {
+	      assert(result.sha256Verified, 'Receiver FEC recovery verified');
+	      break;
+	    }
+	  }
+
+	  var missing = Receiver.getMissingFrames();
+	  assert(missing.size === 0, 'Receiver no missing frames after complete');
+	})();
 </script>
 <script>
 const summary = document.createElement('div');
