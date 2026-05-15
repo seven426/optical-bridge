@@ -8,7 +8,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: #0d0d0d; color: #e0e0e0; min-height: 100vh;
+  background: #fff; color: #222; min-height: 100vh;
   display: flex; flex-direction: column; align-items: center;
 }
 header { padding: 16px; text-align: center; }
@@ -18,43 +18,39 @@ header p { font-size: 12px; color: #888; margin-top: 4px; }
 .stage { display: none; width: 100%; max-width: 640px; padding: 20px; }
 .stage.active { display: block; }
 
-/* Stage 1: Drop zone */
 .drop-zone {
-  border: 2px dashed #444; border-radius: 12px;
+  border: 2px dashed #bbb; border-radius: 12px;
   padding: 48px 24px; text-align: center; cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
 }
 .drop-zone:hover, .drop-zone.drag-over { border-color: #4a9eff; background: rgba(74,158,255,0.05); }
 .drop-zone .icon { font-size: 40px; margin-bottom: 12px; }
-.drop-zone .label { font-size: 15px; color: #aaa; }
-.drop-zone .hint { font-size: 12px; color: #666; margin-top: 8px; }
+.drop-zone .label { font-size: 15px; color: #555; }
+.drop-zone .hint { font-size: 12px; color: #999; margin-top: 8px; }
 input[type=file] { display: none; }
 
-/* Settings */
-.settings { margin-top: 16px; background: #1a1a1a; border-radius: 8px; overflow: hidden; }
+.settings { margin-top: 16px; background: #f5f5f5; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; }
 .settings-toggle {
-  width: 100%; padding: 10px 16px; background: none; border: none; color: #aaa;
+  width: 100%; padding: 10px 16px; background: none; border: none; color: #555;
   font-size: 13px; cursor: pointer; text-align: left;
 }
-.settings-toggle:hover { color: #fff; }
+.settings-toggle:hover { color: #000; }
 .settings-body { display: none; padding: 8px 16px 16px; }
 .settings-body.open { display: block; }
 .setting-row {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 0; font-size: 13px; border-bottom: 1px solid #222;
+  padding: 6px 0; font-size: 13px; border-bottom: 1px solid #e0e0e0;
 }
 .setting-row:last-child { border-bottom: none; }
-.setting-row label { color: #aaa; }
-.setting-row select { background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+.setting-row label { color: #555; }
+.setting-row select { background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; font-size: 13px; }
 
-/* File info */
-.file-info { background: #1a1a1a; border-radius: 8px; padding: 20px; }
-.file-info .row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #222; }
+.file-info { background: #f5f5f5; border-radius: 8px; padding: 20px; border: 1px solid #e0e0e0; }
+.file-info .row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #e0e0e0; }
 .file-info .row:last-child { border-bottom: none; }
 .file-info .row .key { color: #888; }
-.file-info .row .val { color: #e0e0e0; font-family: monospace; font-size: 12px; }
+.file-info .row .val { color: #222; font-family: monospace; font-size: 12px; }
 
-/* Buttons */
 .btn { display: block; width: 100%; margin-top: 16px; padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
 .btn:hover { opacity: 0.85; }
 .btn-primary { background: #4a9eff; color: #fff; }
@@ -62,25 +58,22 @@ input[type=file] { display: none; }
 .btn-pause { background: #ff9800; color: #000; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* QR area */
 .qr-container { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .qr-wrapper { background: #fff; border-radius: 8px; padding: 16px; display: flex; align-items: center; justify-content: center; }
 .qr-wrapper canvas, .qr-wrapper img { display: block; }
 
-/* Stats */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; }
-.stat { background: #1a1a1a; border-radius: 6px; padding: 10px; text-align: center; }
+.stat { background: #f5f5f5; border-radius: 6px; padding: 10px; text-align: center; border: 1px solid #e0e0e0; }
 .stat .value { font-size: 20px; font-weight: 700; color: #4a9eff; }
 .stat .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .controls { display: flex; gap: 8px; width: 100%; margin-top: 8px; }
 .controls .btn { flex: 1; margin-top: 0; font-size: 13px; padding: 10px; }
 
-/* Mode selector */
-.mode-selector { display: flex; gap: 4px; background: #1a1a1a; border-radius: 6px; padding: 3px; margin-bottom: 12px; }
+.mode-selector { display: flex; gap: 4px; background: #f5f5f5; border-radius: 6px; padding: 3px; margin-bottom: 12px; border: 1px solid #e0e0e0; }
 .mode-btn { flex: 1; padding: 6px 12px; border: none; border-radius: 4px; background: transparent; color: #888; font-size: 12px; cursor: pointer; }
-.mode-btn.active { background: #2a2a2a; color: #e0e0e0; }
-.select-input { width: 100%; padding: 8px 12px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; font-family: monospace; font-size: 13px; margin-bottom: 8px; }
+.mode-btn.active { background: #e0e0e0; color: #222; }
+.select-input { width: 100%; padding: 8px 12px; background: #fff; border: 1px solid #ccc; border-radius: 6px; color: #222; font-family: monospace; font-size: 13px; margin-bottom: 8px; }
 .select-info { font-size: 11px; color: #888; margin-bottom: 8px; }
 </style>
 </head>
@@ -114,6 +107,7 @@ input[type=file] { display: none; }
       <div class="setting-row">
         <label>QR version</label>
         <select id="optQRVersion">
+          <option value="0">Auto (by screen height)</option>
           <option value="5">V5 (37x37, ~76B)</option>
           <option value="6">V6 (41x41, ~106B)</option>
           <option value="7">V7 (45x45, ~136B)</option>
@@ -147,7 +141,7 @@ input[type=file] { display: none; }
 <div id="stage2" class="stage">
   <div class="file-info" id="fileInfo"></div>
   <button class="btn btn-primary" id="btnStart">Start Transmission</button>
-  <button class="btn" style="background:#555;color:#fff;" id="btnBack">Back</button>
+  <button class="btn" style="background:#999;color:#fff;" id="btnBack">Back</button>
 </div>
 
 <div id="stage3" class="stage">
@@ -181,31 +175,30 @@ input[type=file] { display: none; }
 <script src="lib/qrcode.js"></script>
 <script>
 (function() {
-  // DOM refs
-  const stage1 = document.getElementById('stage1');
-  const stage2 = document.getElementById('stage2');
-  const stage3 = document.getElementById('stage3');
-  const dropZone = document.getElementById('dropZone');
-  const fileInput = document.getElementById('fileInput');
-  const fileInfo = document.getElementById('fileInfo');
-  const btnStart = document.getElementById('btnStart');
-  const btnBack = document.getElementById('btnBack');
-  const btnPause = document.getElementById('btnPause');
-  const btnStop = document.getElementById('btnStop');
-  const qrWrapper = document.getElementById('qrWrapper');
-  const settingsToggle = document.getElementById('settingsToggle');
-  const settingsBody = document.getElementById('settingsBody');
-  const selectInput = document.getElementById('selectInput');
-  const selectInfo = document.getElementById('selectInfo');
-  const modeSelector = document.getElementById('modeSelector');
+  var stage1 = document.getElementById('stage1');
+  var stage2 = document.getElementById('stage2');
+  var stage3 = document.getElementById('stage3');
+  var dropZone = document.getElementById('dropZone');
+  var fileInput = document.getElementById('fileInput');
+  var fileInfo = document.getElementById('fileInfo');
+  var btnStart = document.getElementById('btnStart');
+  var btnBack = document.getElementById('btnBack');
+  var btnPause = document.getElementById('btnPause');
+  var btnStop = document.getElementById('btnStop');
+  var qrWrapper = document.getElementById('qrWrapper');
+  var settingsToggle = document.getElementById('settingsToggle');
+  var settingsBody = document.getElementById('settingsBody');
+  var selectInput = document.getElementById('selectInput');
+  var selectInfo = document.getElementById('selectInfo');
+  var modeSelector = document.getElementById('modeSelector');
 
-  let timer = null;
-  let paused = false;
-  let roundCount = 0;
-  let cycleFrameIdx = 0;
-  let elapsedSec = 0;
-  let elapsedTimer = null;
-  let cycleFrames = null;
+  var timer = null;
+  var paused = false;
+  var roundCount = 0;
+  var cycleFrameIdx = 0;
+  var elapsedSec = 0;
+  var elapsedTimer = null;
+  var cycleFrames = null;
 
   function showStage(n) {
     stage1.classList.toggle('active', n === 1);
@@ -213,7 +206,6 @@ input[type=file] { display: none; }
     stage3.classList.toggle('active', n === 3);
   }
 
-  // File selection
   dropZone.addEventListener('click', function() { fileInput.click(); });
   dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
@@ -265,7 +257,6 @@ input[type=file] { display: none; }
 
   btnBack.addEventListener('click', function() { showStage(1); });
 
-  // Stage 3: Transmission
   btnStart.addEventListener('click', startTransmission);
   btnStop.addEventListener('click', stopTransmission);
   btnPause.addEventListener('click', togglePause);
@@ -343,7 +334,6 @@ input[type=file] { display: none; }
     }, state.intervalMs);
   }
 
-  // Compute once: max Base64 length across all frames for consistent QR version
   var maxB64Len = 0;
   function ensureMaxB64Len() {
     if (maxB64Len > 0) return;
@@ -368,13 +358,11 @@ input[type=file] { display: none; }
 
       ensureMaxB64Len();
 
-      // Base64-encode and pad to consistent length
       var binary = '';
       for (var i = 0; i < frame.length; i++) {
         binary += String.fromCharCode(frame[i]);
       }
       var b64 = btoa(binary);
-      // Pad with 'A' (Base64 for 0x00) to match max length for consistent QR version
       while (maxB64Len > 0 && b64.length < maxB64Len) {
         b64 += 'A';
       }
@@ -407,7 +395,6 @@ input[type=file] { display: none; }
       }
     } catch (e) {
       console.error('showFrame error:', e);
-      // Try to advance to next frame on error
       cycleFrameIdx++;
       if (cycleFrameIdx >= cycleFrames.length) {
         cycleFrameIdx = 0;
