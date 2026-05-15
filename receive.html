@@ -49,6 +49,7 @@ video { display: block; width: 100%; }
   background: #333;
 }
 .heatmap-cell.received { background: #4caf50; }
+.heatmap-cell.parity { background: #2196f3; }
 .heatmap-cell.missing { background: #f44336; }
 
 .missing-section { margin-top: 16px; }
@@ -97,7 +98,7 @@ video { display: block; width: 100%; }
   </div>
 
   <div class="heatmap-container" id="heatmapSection" style="display:none;">
-    <h3>Frame Map (green=received, red=missing)</h3>
+    <h3>Frame Map (green=data, blue=parity, red=missing)</h3>
     <div class="heatmap" id="heatmap"></div>
   </div>
 
@@ -243,7 +244,8 @@ video { display: block; width: 100%; }
   function updateUI() {
     var stats = Receiver.getStats();
 
-    document.getElementById('statReceived').textContent = stats.received;
+    var displayExpected = stats.expectedWithParity || stats.expected || '?';
+    document.getElementById('statReceived').textContent = stats.received + '/' + displayExpected;
     document.getElementById('statBlocks').textContent = stats.blocksReady + '/' + stats.totalBlocks;
     document.getElementById('statRecovered').textContent = stats.blocksReady;
 
@@ -251,12 +253,15 @@ video { display: block; width: 100%; }
     document.getElementById('statMissing').textContent = missing.size;
     missingFramesEl.textContent = FrameRange.format(missing) || '(none)';
 
-    // Heatmap
-    if (stats.expected) {
+    // Heatmap - include parity frames
+    var totalDisplay = stats.expectedWithParity || stats.expected;
+    if (totalDisplay) {
       var html = '';
-      for (var i = 0; i < stats.expected; i++) {
-        var cls = missing.has(i) ? 'missing' : 'received';
-        html += '<span class="heatmap-cell ' + cls + '" title="Frame ' + i + '"></span>';
+      for (var i = 0; i < totalDisplay; i++) {
+        var isParity = stats.expected && i >= stats.expected;
+        var cls = missing.has(i) ? 'missing' : (isParity ? 'parity' : 'received');
+        var title = 'Frame ' + i + (isParity ? ' (parity)' : '');
+        html += '<span class="heatmap-cell ' + cls + '" title="' + title + '"></span>';
       }
       heatmap.innerHTML = html;
     }
