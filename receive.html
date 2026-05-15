@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpticalBridge — Receive</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #0d0d0d; color: #e0e0e0; min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+}
+header { padding: 16px; text-align: center; }
+header h1 { font-size: 20px; font-weight: 600; }
+header p { font-size: 12px; color: #888; margin-top: 4px; }
+
+.main { width: 100%; max-width: 640px; padding: 16px; }
+
+.camera-container { position: relative; border-radius: 8px; overflow: hidden; background: #000; }
+video { display: block; width: 100%; }
+.reticle {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 60%; height: 60%; border: 2px solid rgba(74,158,255,0.6); border-radius: 8px;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);
+}
+.indicator {
+  position: absolute; top: 16px; right: 16px;
+  width: 12px; height: 12px; border-radius: 50%; background: #888;
+  transition: background 0.15s;
+}
+.indicator.success { background: #4caf50; }
+.indicator.fail { background: #f44336; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+.stat { background: #1a1a1a; border-radius: 6px; padding: 10px; text-align: center; }
+.stat .value { font-size: 20px; font-weight: 700; color: #4caf50; }
+.stat .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.heatmap-container { margin-top: 16px; }
+.heatmap-container h3 { font-size: 13px; color: #888; margin-bottom: 6px; }
+.heatmap {
+  display: flex; flex-wrap: wrap; gap: 2px; max-height: 120px; overflow-y: auto;
+  background: #111; border-radius: 4px; padding: 4px;
+}
+.heatmap-cell {
+  width: 10px; height: 10px; border-radius: 1px; flex-shrink: 0;
+  background: #333;
+}
+.heatmap-cell.received { background: #4caf50; }
+.heatmap-cell.missing { background: #f44336; }
+
+.missing-section { margin-top: 16px; }
+.missing-section h3 { font-size: 13px; color: #888; margin-bottom: 6px; }
+.missing-frames {
+  background: #1a1a1a; border-radius: 6px; padding: 10px;
+  font-family: monospace; font-size: 12px; word-break: break-all;
+  user-select: all; color: #f44336;
+}
+
+.btn {
+  width: 100%; margin-top: 12px; padding: 12px; border: none; border-radius: 8px;
+  font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.btn-primary { background: #4caf50; color: #fff; }
+.btn-primary:hover { opacity: 0.85; }
+
+.download-section { margin-top: 16px; background: #1a1a1a; border-radius: 8px; padding: 20px; text-align: center; display: none; }
+.download-section.show { display: block; }
+.download-section .status { font-size: 14px; margin-bottom: 8px; }
+.download-section .status.ok { color: #4caf50; }
+.download-section .status.warn { color: #ff9800; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpticalBridge — Receive</h1>
+  <p>Point camera at sender's screen</p>
+</header>
+
+<div class="main">
+  <div id="cameraSection">
+    <div class="camera-container">
+      <video id="video" autoplay playsinline></video>
+      <div class="reticle"></div>
+      <div class="indicator" id="indicator"></div>
+    </div>
+    <button class="btn btn-primary" id="btnStart">Start Camera</button>
+  </div>
+
+  <div class="stats" id="statsSection" style="display:none;">
+    <div class="stat"><div class="value" id="statReceived">0</div><div class="label">Frames</div></div>
+    <div class="stat"><div class="value" id="statBlocks">0/0</div><div class="label">Blocks ready</div></div>
+    <div class="stat"><div class="value" id="statRecovered">0</div><div class="label">Recovered</div></div>
+    <div class="stat"><div class="value" id="statMissing">-</div><div class="label">Missing</div></div>
+  </div>
+
+  <div class="heatmap-container" id="heatmapSection" style="display:none;">
+    <h3>Frame Map (green=received, red=missing)</h3>
+    <div class="heatmap" id="heatmap"></div>
+  </div>
+
+  <div class="missing-section" id="missingSection" style="display:none;">
+    <h3>Missing Frames (copy to tell sender)</h3>
+    <div class="missing-frames" id="missingFrames"></div>
+  </div>
+
+  <div class="download-section" id="downloadSection">
+    <div class="status" id="downloadStatus"></div>
+    <button class="btn btn-primary" id="btnDownload" style="display:none;">Download File</button>
+  </div>
+</div>
+
+<script src="lib/gf256.js"></script>
+<script src="lib/frame-protocol.js"></script>
+<script src="lib/reed-solomon.js"></script>
+<script src="lib/frame-range.js"></script>
+<script src="lib/receiver.js"></script>
+<script src="lib/jsQR.js"></script>
+<script>
+(function() {
+  var video = document.getElementById('video');
+  var indicator = document.getElementById('indicator');
+  var btnStart = document.getElementById('btnStart');
+  var heatmap = document.getElementById('heatmap');
+  var missingFramesEl = document.getElementById('missingFrames');
+  var downloadSection = document.getElementById('downloadSection');
+  var downloadStatus = document.getElementById('downloadStatus');
+  var btnDownload = document.getElementById('btnDownload');
+
+  var scanning = false;
+  var scanTimer = null;
+  var completeFile = null;
+
+  btnStart.addEventListener('click', startCamera);
+
+  async function startCamera() {
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      video.srcObject = stream;
+      btnStart.style.display = 'none';
+      document.getElementById('statsSection').style.display = 'grid';
+      document.getElementById('heatmapSection').style.display = 'block';
+      document.getElementById('missingSection').style.display = 'block';
+
+      Receiver.init();
+      startScanning();
+    } catch (err) {
+      alert('Camera access denied. Please allow camera permissions and try again.\n\n' + err.message);
+    }
+  }
+
+  function startScanning() {
+    scanning = true;
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+
+    function scan() {
+      if (!scanning) return;
+
+      if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var qrData = jsQR(imageData.data, imageData.width, imageData.height);
+
+        if (qrData && qrData.data) {
+          var frameBytes;
+
+          // Try binaryData first (byte-mode QR), fall back to string conversion
+          if (qrData.binaryData && qrData.binaryData.length > 0) {
+            frameBytes = new Uint8Array(qrData.binaryData);
+          } else {
+            // Fallback: decode from string (Latin-1)
+            var str = qrData.data;
+            frameBytes = new Uint8Array(str.length);
+            for (var i = 0; i < str.length; i++) {
+              frameBytes[i] = str.charCodeAt(i) & 0xFF;
+            }
+          }
+
+          var result = Receiver.ingestFrameBinary(frameBytes);
+
+          if (result.status === 'new' || (result.then && result.status === undefined)) {
+            // ingestFrame may return a Promise when complete
+            if (result.then) {
+              result.then(function(r) { handleResult(r); });
+            } else {
+              handleResult(result);
+            }
+          } else if (result.status === 'complete') {
+            handleResult(result);
+          } else if (result.status === 'bad' || result.status === 'dup') {
+            // bad frame or duplicate - flash indicator
+            if (result.status === 'bad') {
+              flashIndicator('fail');
+            }
+          }
+        }
+      }
+
+      scanTimer = requestAnimationFrame(scan);
+    }
+
+    scanTimer = requestAnimationFrame(scan);
+  }
+
+  function handleResult(result) {
+    if (result.status === 'new') {
+      flashIndicator('success');
+    } else if (result.status === 'complete') {
+      flashIndicator('success');
+      completeFile = result;
+      showDownload(result);
+      stopScanning();
+    }
+    updateUI();
+  }
+
+  function flashIndicator(type) {
+    indicator.classList.add(type);
+    setTimeout(function() { indicator.classList.remove(type); }, 150);
+  }
+
+  function stopScanning() {
+    scanning = false;
+    if (scanTimer) {
+      cancelAnimationFrame(scanTimer);
+      scanTimer = null;
+    }
+  }
+
+  function updateUI() {
+    var stats = Receiver.getStats();
+
+    document.getElementById('statReceived').textContent = stats.received;
+    document.getElementById('statBlocks').textContent = stats.blocksReady + '/' + stats.totalBlocks;
+    document.getElementById('statRecovered').textContent = stats.blocksReady;
+
+    var missing = Receiver.getMissingFrames();
+    document.getElementById('statMissing').textContent = missing.size;
+    missingFramesEl.textContent = FrameRange.format(missing) || '(none)';
+
+    // Heatmap
+    if (stats.expected) {
+      var html = '';
+      for (var i = 0; i < stats.expected; i++) {
+        var cls = missing.has(i) ? 'missing' : 'received';
+        html += '<span class="heatmap-cell ' + cls + '" title="Frame ' + i + '"></span>';
+      }
+      heatmap.innerHTML = html;
+    }
+
+    if (stats.complete) {
+      document.getElementById('missingSection').style.display = 'none';
+    }
+  }
+
+  function showDownload(result) {
+    downloadSection.classList.add('show');
+    if (result.sha256Verified) {
+      downloadStatus.className = 'status ok';
+      downloadStatus.textContent = 'SHA-256 verified — file ready';
+    } else {
+      downloadStatus.className = 'status warn';
+      downloadStatus.textContent = 'SHA-256 mismatch! File may be corrupted.';
+    }
+    btnDownload.style.display = 'block';
+    btnDownload.onclick = function() {
+      var blob = new Blob([result.bytes], { type: 'application/octet-stream' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = result.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
+})();
+</script>
+</body>
+</html>
