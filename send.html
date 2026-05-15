@@ -342,41 +342,52 @@ input[type=file] { display: none; }
   function showFrame() {
     if (!cycleFrames || cycleFrames.length === 0) return;
 
-    var state = Sender.getState();
-    var frame = cycleFrames[cycleFrameIdx];
+    try {
+      var state = Sender.getState();
+      var frame = cycleFrames[cycleFrameIdx];
 
-    // Render QR code using qrcodejs (davidshimjs)
-    // Convert binary Uint8Array to string for QR encoding
-    var strData = '';
-    for (var i = 0; i < frame.length; i++) {
-      strData += String.fromCharCode(frame[i]);
-    }
+      // Base64-encode frame binary data for safe QR encoding
+      var binary = '';
+      for (var i = 0; i < frame.length; i++) {
+        binary += String.fromCharCode(frame[i]);
+      }
+      var b64 = btoa(binary);
 
-    var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
-    qrWrapper.innerHTML = '';
-    new QRCode(qrWrapper, {
-      text: strData,
-      width: qrSize,
-      height: qrSize,
-      colorDark: '#000000',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
-    });
+      var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
+      qrWrapper.innerHTML = '';
+      new QRCode(qrWrapper, {
+        text: b64,
+        width: qrSize,
+        height: qrSize,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
+      });
 
-    var unpacked = FrameProtocol.unpackFrame(frame);
-    var frameIdx = unpacked ? unpacked.frameIdx : '?';
-    var total = state.totalDataFrames || '?';
+      var unpacked = FrameProtocol.unpackFrame(frame);
+      var frameIdx = unpacked ? unpacked.frameIdx : '?';
+      var total = state.totalDataFrames || '?';
 
-    document.getElementById('statFrame').textContent = frameIdx + '/' + total;
-    if (total !== '?') {
-      document.getElementById('statProgress').textContent = Math.round((parseInt(frameIdx) / parseInt(total)) * 100) + '%';
-    }
+      document.getElementById('statFrame').textContent = frameIdx + '/' + total;
+      if (total !== '?') {
+        document.getElementById('statProgress').textContent = Math.round((parseInt(frameIdx) / parseInt(total)) * 100) + '%';
+      }
 
-    cycleFrameIdx++;
-    if (cycleFrameIdx >= cycleFrames.length) {
-      cycleFrameIdx = 0;
-      roundCount++;
-      document.getElementById('statRound').textContent = roundCount;
+      cycleFrameIdx++;
+      if (cycleFrameIdx >= cycleFrames.length) {
+        cycleFrameIdx = 0;
+        roundCount++;
+        document.getElementById('statRound').textContent = roundCount;
+      }
+    } catch (e) {
+      console.error('showFrame error:', e);
+      // Try to advance to next frame on error
+      cycleFrameIdx++;
+      if (cycleFrameIdx >= cycleFrames.length) {
+        cycleFrameIdx = 0;
+        roundCount++;
+        document.getElementById('statRound').textContent = roundCount;
+      }
     }
   }
 

@@ -173,11 +173,15 @@ video { display: block; width: 100%; }
         if (qrData && qrData.data) {
           var frameBytes;
 
-          // Try binaryData first (byte-mode QR), fall back to string conversion
-          if (qrData.binaryData && qrData.binaryData.length > 0) {
-            frameBytes = new Uint8Array(qrData.binaryData);
-          } else {
-            // Fallback: decode from string (Latin-1)
+          // Base64-decode the QR data (sender Base64-encodes frame binary)
+          try {
+            var binary = atob(qrData.data);
+            frameBytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) {
+              frameBytes[i] = binary.charCodeAt(i) & 0xFF;
+            }
+          } catch (e) {
+            // Fallback: try raw string if not Base64
             var str = qrData.data;
             frameBytes = new Uint8Array(str.length);
             for (var i = 0; i < str.length; i++) {
