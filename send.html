@@ -340,6 +340,22 @@ input[type=file] { display: none; }
     }, state.intervalMs);
   }
 
+  // Compute once: max Base64 length across all frames for consistent QR version
+  var maxB64Len = 0;
+  function ensureMaxB64Len() {
+    if (maxB64Len > 0) return;
+    var allFrames = Sender.getState().frames;
+    if (!allFrames) return;
+    for (var i = 0; i < allFrames.length; i++) {
+      var bin = '';
+      for (var j = 0; j < allFrames[i].length; j++) {
+        bin += String.fromCharCode(allFrames[i][j]);
+      }
+      var b64 = btoa(bin);
+      if (b64.length > maxB64Len) maxB64Len = b64.length;
+    }
+  }
+
   function showFrame() {
     if (!cycleFrames || cycleFrames.length === 0) return;
 
@@ -347,12 +363,18 @@ input[type=file] { display: none; }
       var state = Sender.getState();
       var frame = cycleFrames[cycleFrameIdx];
 
-      // Base64-encode frame binary data for safe QR encoding
+      ensureMaxB64Len();
+
+      // Base64-encode and pad to consistent length
       var binary = '';
       for (var i = 0; i < frame.length; i++) {
         binary += String.fromCharCode(frame[i]);
       }
       var b64 = btoa(binary);
+      // Pad with 'A' (Base64 for 0x00) to match max length for consistent QR version
+      while (maxB64Len > 0 && b64.length < maxB64Len) {
+        b64 += 'A';
+      }
 
       var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
       qrWrapper.innerHTML = '';
