@@ -91,6 +91,46 @@ for (let i = 1; i < 256; i++) {
     assert(parsed.sha256[i] === i, 'metadata sha256[' + i + ']');
   }
 })();
+
+	// FrameRange tests
+	(function() {
+	  const r1 = FrameRange.parse('42');
+	  assert(r1.size === 1 && r1.has(42), 'parse single frame');
+
+	  const r2 = FrameRange.parse('87,120');
+	  assert(r2.size === 2 && r2.has(87) && r2.has(120), 'parse comma list');
+
+	  const r3 = FrameRange.parse('120-125');
+	  assert(r3.size === 6 && r3.has(120) && r3.has(125), 'parse range');
+
+	  const r4 = FrameRange.parse('300-310,520,600-605');
+	  const expected = new Set();
+	  for (let i = 300; i <= 310; i++) expected.add(i);
+	  expected.add(520);
+	  for (let i = 600; i <= 605; i++) expected.add(i);
+	  assert(r4.size === expected.size, 'parse mixed count');
+	  for (const n of expected) assert(r4.has(n), 'parse mixed has ' + n);
+
+	  const r5 = FrameRange.parse('500-999', 600);
+	  assert(r5.size === 100, 'parse range bounded by maxFrame');
+	  assert(!r5.has(600), 'parse bounded excludes maxFrame');
+
+	  const r6 = FrameRange.parse('   42 ,  87-90  ');
+	  assert(r6.has(42) && r6.has(87) && r6.has(90), 'parse whitespace tolerance');
+
+	  const r7 = FrameRange.parse('abc,xyz');
+	  assert(r7.size === 0, 'parse invalid tokens');
+
+	  // Format
+	  const fm1 = FrameRange.format(new Set([42,87,120,121,122,123]));
+	  assert(fm1 === '42,87,120-123', 'format compact');
+
+	  const fm2 = FrameRange.format(new Set([300,520,600,601,602,603,604,605]));
+	  assert(fm2 === '300,520,600-605', 'format mixed');
+
+	  const fm3 = FrameRange.format(new Set());
+	  assert(fm3 === '', 'format empty');
+	})();
 </script>
 <script>
 const summary = document.createElement('div');
