@@ -31,7 +31,21 @@ function assert(cond, name) {
   results.appendChild(el);
 }
 
-// Tests will be appended by subsequent tasks
+// GF256 tests
+assert(GF256.add(0x53, 0xCA) === 0x99, 'GF256 add');
+assert(GF256.mul(0x57, 0x83) === 0x31, 'GF256 mul known value');
+assert(GF256.mul(0x00, 0xFF) === 0x00, 'GF256 mul by zero');
+assert(GF256.mul(0x01, 0xAB) === 0xAB, 'GF256 mul by one');
+assert(GF256.div(0x31, 0x83) === 0x57, 'GF256 div');
+assert(GF256.inverse(0x02) === 0x8E, 'GF256 inverse of 2');
+assert(GF256.pow(0x02, 0) === 0x01, 'GF256 pow zero');
+assert(GF256.pow(0x02, 7) === 0x80, 'GF256 pow of generator');
+
+// Roundtrip: mul then div
+for (let i = 1; i < 256; i++) {
+  const inv = GF256.inverse(i);
+  assert(GF256.mul(i, inv) === 1, 'GF256 inverse roundtrip ' + i);
+}
 </script>
 <script>
 const summary = document.createElement('div');
