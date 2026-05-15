@@ -181,6 +181,52 @@ for (let i = 1; i < 256; i++) {
 	  const singleRec = rs.decode([singleEnc[1]], [1], 1, 1);
 	  assert(singleRec[0][0] === 42 && singleRec[0][1] === 99, 'RS decode from parity only');
 	})();
+	})();
+
+	// Sender integration test
+	(async function() {
+	  const testData = new Uint8Array(5000);
+	  for (let i = 0; i < 5000; i++) testData[i] = (i * 7 + 13) & 0xFF;
+	  const blob = new Blob([testData], { type: 'application/octet-stream' });
+	  const file = new File([blob], 'test.bin', { type: 'application/octet-stream' });
+
+	  const info = await Sender.prepareFile(file, {
+	    qrVersion: 40, ecLevel: 'M', fecK: 5, fecN: 1, frameInterval: 200
+	  });
+
+	  assert(info.filename === 'test.bin', 'Sender prepare filename');
+	  assert(info.fileSize === 5000, 'Sender prepare fileSize');
+	  assert(info.sha256hex.length === 64, 'Sender SHA-256 hex length');
+	  assert(info.totalFrames >= info.totalDataFrames, 'Sender totalFrames >= dataFrames');
+
+	  const frames = Sender.generateFrames();
+	  assert(frames.length > 0, 'Sender generated frames');
+
+	  const f0 = FrameProtocol.unpackFrame(frames[0]);
+	  assert(f0 !== null, 'Sender frame #0 decodable');
+	  const meta = FrameProtocol.parseMetadataPayload(f0.payload);
+	  assert(meta !== null && meta.filename === 'test.bin', 'Sender frame #0 has metadata');
+	  assert(meta.fileSize === 5000, 'Sender frame #0 fileSize correct');
+
+	  for (let i = 0; i < frames.length; i++) {
+	    const u = FrameProtocol.unpackFrame(frames[i]);
+	    assert(u !== null, 'Sender frame ' + i + ' decodable');
+	    assert(u.frameIdx === i, 'Sender frame ' + i + ' index correct');
+	  }
+
+	  // Test selective mode
+	  Sender.setSelectMode(new Set([5, 10, 15]));
+	  const selFrames = Sender.getCycleFrames();
+	  assert(selFrames.length === 3, 'Sender select mode correct count');
+
+	  Sender.setAllMode();
+	  const allFrames = Sender.getCycleFrames();
+	  assert(allFrames.length === frames.length + 3, 'Sender all mode includes preamble');
+
+	  // QR version selection
+	  assert(Sender.pickQRVersion() > 0, 'pickQRVersion returns valid version');
+	  assert(Sender.getQRPayloadCapacity(40, 'M') > 0, 'getQRPayloadCapacity returns valid capacity');
+	})();
 </script>
 <script>
 const summary = document.createElement('div');
