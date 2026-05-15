@@ -192,20 +192,23 @@ video { display: block; width: 100%; }
 
           var result = Receiver.ingestFrameBinary(frameBytes);
 
-          if (result.status === 'new' || (result.then && result.status === undefined)) {
-            // ingestFrame may return a Promise when complete
-            if (result.then) {
-              result.then(function(r) { handleResult(r); });
-            } else {
-              handleResult(result);
+          if (result.status === 'new') {
+            handleResult(result);
+          } else if (result.status === 'processing') {
+            // All blocks ready, verifying SHA-256...
+            updateUI();
+            showProcessing();
+            var promise = Receiver.getProcessingPromise();
+            if (promise) {
+              promise.then(function(r) {
+                r.status = 'complete';
+                handleResult(r);
+              });
             }
           } else if (result.status === 'complete') {
             handleResult(result);
-          } else if (result.status === 'bad' || result.status === 'dup') {
-            // bad frame or duplicate - flash indicator
-            if (result.status === 'bad') {
-              flashIndicator('fail');
-            }
+          } else if (result.status === 'bad') {
+            flashIndicator('fail');
           }
         }
       }
@@ -269,6 +272,13 @@ video { display: block; width: 100%; }
     if (stats.complete) {
       document.getElementById('missingSection').style.display = 'none';
     }
+  }
+
+  function showProcessing() {
+    downloadSection.classList.add('show');
+    downloadStatus.className = 'status';
+    downloadStatus.textContent = 'All frames received. Verifying SHA-256...';
+    btnDownload.style.display = 'none';
   }
 
   function showDownload(result) {
