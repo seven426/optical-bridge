@@ -98,7 +98,8 @@ input[type=file] { display: none; }
         <select id="optInterval">
           <option value="100">100 ms</option>
           <option value="150">150 ms</option>
-          <option value="200" selected>200 ms</option>
+          <option value="200">200 ms</option>
+          <option value="150" selected>150 ms</option>
           <option value="250">250 ms</option>
           <option value="300">300 ms</option>
           <option value="500">500 ms</option>
@@ -152,6 +153,7 @@ input[type=file] { display: none; }
   <input class="select-input" id="selectInput" placeholder="Frame range: 42,87,120-125" style="display:none;">
   <div class="select-info" id="selectInfo" style="display:none;"></div>
   <div class="qr-container">
+    <div id="shaDisplay" style="font-size:10px;word-break:break-all;color:#888;text-align:center;margin-bottom:4px;font-family:monospace;"></div>
     <div class="qr-wrapper" id="qrWrapper"></div>
     <div class="stats">
       <div class="stat"><div class="value" id="statFrame">-</div><div class="label">Frame</div></div>
@@ -256,7 +258,7 @@ input[type=file] { display: none; }
     }
   }
 
-  btnBack.addEventListener('click', function() { showStage(1); });
+  btnBack.addEventListener('click', function() { fileInput.value = ''; showStage(1); });
 
   btnStart.addEventListener('click', startTransmission);
   btnStop.addEventListener('click', stopTransmission);
@@ -307,6 +309,7 @@ input[type=file] { display: none; }
     timer = null;
     elapsedTimer = null;
     qrWrapper.innerHTML = '';
+    fileInput.value = '';
     showStage(1);
   }
 
@@ -318,6 +321,7 @@ input[type=file] { display: none; }
   function startDisplay() {
     var state = Sender.getState();
     elapsedSec = 0;
+    document.getElementById('shaDisplay').textContent = 'SHA-256: ' + state.sha256hex;
     document.getElementById('statElapsed').textContent = '00:00';
 
     if (elapsedTimer) clearInterval(elapsedTimer);
