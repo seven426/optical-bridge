@@ -247,12 +247,23 @@ video { display: block; width: 100%; }
     var scanId = 0;
 
     // Worker pool: jsQR runs off main thread so frame capture isn't blocked
+    // Use Blob URL to avoid file:// restrictions on Worker construction
+    var workerBlob = new Blob([
+      "importScripts('lib/jsQR.js');\n",
+      "self.onmessage=function(e){",
+        "var p=new Uint8ClampedArray(e.data.pixels);",
+        "var r; try{r=jsQR(p,e.data.width,e.data.height,e.data.opts||{});}catch(ex){}",
+        "self.postMessage({id:e.data.id,workerIdx:e.data.workerIdx,result:r,_sentAt:e.data._sentAt});",
+      "};"
+    ], { type: 'application/javascript' });
+    var workerUrl = URL.createObjectURL(workerBlob);
+
     var workerCount = screenMode ? 2 : 1;
     var workers = [];
     var workerBusy = [];
     for (var w = 0; w < workerCount; w++) {
       workerBusy.push(false);
-      var worker = new Worker('lib/scan-worker.js');
+      var worker = new Worker(workerUrl);
       worker.onmessage = function(e) {
         var data = e.data;
         var busyIdx = data.workerIdx;
