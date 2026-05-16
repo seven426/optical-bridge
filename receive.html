@@ -148,6 +148,8 @@ video { display: block; width: 100%; }
   var scanTimer = null;
   var completeFile = null;
   var receiverMode = 'camera';
+  var firstFrameTime = null;
+  var transferFileSize = null;
 
   // Mode toggle
   document.getElementById('receiverMode').addEventListener('click', function(e) {
@@ -186,6 +188,8 @@ video { display: block; width: 100%; }
       document.getElementById('missingSection').style.display = 'block';
       document.getElementById('diagSection').style.display = 'block';
 
+      firstFrameTime = null;
+      transferFileSize = null;
       Receiver.init();
       startScanning(false);  // camera mode: throttle, downscale
     } catch (err) {
@@ -219,6 +223,8 @@ video { display: block; width: 100%; }
         document.getElementById('downloadSection').classList.remove('show');
       });
 
+      firstFrameTime = null;
+      transferFileSize = null;
       Receiver.init();
       startScanning(true);  // screen mode: full rate, less downscale
     } catch (err) {
@@ -301,8 +307,15 @@ video { display: block; width: 100%; }
         if (totalScanAttempts - lastDiagUpdate >= 15) {
           lastDiagUpdate = totalScanAttempts;
           var diagEl = document.getElementById('diagSection');
+          var elapsedStr = '';
+          if (firstFrameTime) {
+            var secs = Math.floor((Date.now() - firstFrameTime) / 1000);
+            var mins = Math.floor(secs / 60);
+            var remainSecs = secs % 60;
+            elapsedStr = ' | elapsed:' + mins + 'm' + remainSecs + 's';
+          }
           diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
-            ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH;
+            ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH + elapsedStr;
         }
 
         } catch (e) {
@@ -321,6 +334,13 @@ video { display: block; width: 100%; }
   function handleResult(result) {
     if (result.status === 'new') {
       flashIndicator('success');
+      // Record first frame time for speed measurement
+      if (!firstFrameTime) {
+        firstFrameTime = Date.now();
+        var stats = Receiver.getStats();
+        transferFileSize = result.totalExpected ? null : null; // actual file size unknown until complete
+        document.getElementById('diagSection').textContent += ' | started';
+      }
       // Track recent frame ID
       if (result.frameIdx !== undefined) {
         recentIds.push(result.frameIdx);
@@ -329,6 +349,12 @@ video { display: block; width: 100%; }
     } else if (result.status === 'complete') {
       flashIndicator('success');
       completeFile = result;
+      // Calculate transfer speed
+      if (firstFrameTime) {
+        var elapsed = (Date.now() - firstFrameTime) / 1000;
+        result.elapsedSeconds = elapsed;
+        result.speedBps = elapsed > 0 ? Math.round(result.fileSize / elapsed) : 0;
+      }
       showDownload(result);
       stopScanning();
     }
@@ -398,7 +424,14 @@ video { display: block; width: 100%; }
   function showDownload(result) {
     downloadSection.classList.add('show');
     downloadStatus.className = 'status ok';
-    downloadStatus.textContent = 'File ready — compare SHA-256 with sender';
+
+    // Build speed info
+    var speedInfo = '';
+    if (result.elapsedSeconds !== undefined && result.speedBps !== undefined) {
+      var speedKBps = (result.speedBps / 1024).toFixed(1);
+      speedInfo = ' | ' + result.elapsedSeconds.toFixed(1) + 's | ' + speedKBps + ' KB/s';
+    }
+    downloadStatus.textContent = 'File ready — compare SHA-256 with sender' + speedInfo;
 
     // Show SHA-256
     var shaDiv = document.getElementById('sha256Display');
