@@ -365,9 +365,10 @@ input[type=file] { display: none; }
 
     showFrame();
     if (timer) clearInterval(timer);
+    var activeInterval = parseInt(document.getElementById('optInterval').value) || state.intervalMs;
     timer = setInterval(function() {
       if (!paused) showFrame();
-    }, state.intervalMs);
+    }, activeInterval);
   }
 
   function showFrame() {
