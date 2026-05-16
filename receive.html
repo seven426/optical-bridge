@@ -247,9 +247,21 @@ video { display: block; width: 100%; }
     var scanId = 0;
 
     // Worker pool: jsQR runs off main thread so frame capture isn't blocked
-    // Use Blob URL to avoid file:// restrictions on Worker construction
+    // Read jsQR source synchronously (file:// safe) and embed in worker blob
+    var jsqrSource = '';
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'lib/jsQR.js', false);
+      xhr.send();
+      if (xhr.status === 0 || xhr.status === 200) jsqrSource = xhr.responseText;
+    } catch(e) {}
+    if (!jsqrSource) {
+      // Fallback: jsQR already loaded on page, create thin worker
+      jsqrSource = 'var jsQR=' + jsQR.toString() + ';';
+    }
+
     var workerBlob = new Blob([
-      "importScripts('lib/jsQR.js');\n",
+      jsqrSource, ";\n",
       "self.onmessage=function(e){",
         "var p=new Uint8ClampedArray(e.data.pixels);",
         "var r; try{r=jsQR(p,e.data.width,e.data.height,e.data.opts||{});}catch(ex){}",
@@ -263,7 +275,14 @@ video { display: block; width: 100%; }
     var workerBusy = [];
     for (var w = 0; w < workerCount; w++) {
       workerBusy.push(false);
-      var worker = new Worker(workerUrl);
+      var worker;
+      try {
+        worker = new Worker(workerUrl);
+      } catch(e) {
+        // Worker construction failed, fall back to sync mode
+        workerCount = 0;
+        break;
+      }
       worker.onmessage = function(e) {
         var data = e.data;
         var busyIdx = data.workerIdx;
@@ -317,17 +336,18 @@ video { display: block; width: 100%; }
       }
       lastScanTime = now;
 
-      // Find an idle worker
+      // Find an idle worker (or fall back to sync if no workers)
       var useWorker = -1;
-      for (var w = 0; w < workerCount; w++) {
-        if (!workerBusy[w]) { useWorker = w; break; }
+      if (workerCount > 0) {
+        for (var w = 0; w < workerCount; w++) {
+          if (!workerBusy[w]) { useWorker = w; break; }
+        }
+        if (useWorker === -1) {
+          scanTimer = requestAnimationFrame(scan);
+          return;
+        }
+        workerBusy[useWorker] = true;
       }
-      if (useWorker === -1) {
-        // All workers busy, skip this frame
-        scanTimer = requestAnimationFrame(scan);
-        return;
-      }
-      workerBusy[useWorker] = true;
 
       if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
         var scaleX = Math.min(1, MAX_SCAN_DIM / video.videoWidth);
@@ -347,20 +367,39 @@ video { display: block; width: 100%; }
           var jsqrOpts = screenMode ? { inversionAttempts: 'dontInvert' } : {};
           var id = scanId++;
 
-          workers[useWorker].postMessage({
-            id: id,
-            workerIdx: useWorker,
-            pixels: imageData.data.buffer,
-            width: imageData.width,
-            height: imageData.height,
-            opts: jsqrOpts,
-            _sentAt: Date.now()
-          }, [imageData.data.buffer]);
+          if (useWorker >= 0) {
+            workers[useWorker].postMessage({
+              id: id,
+              workerIdx: useWorker,
+              pixels: imageData.data.buffer,
+              width: imageData.width,
+              height: imageData.height,
+              opts: jsqrOpts,
+              _sentAt: Date.now()
+            }, [imageData.data.buffer]);
+          } else {
+            // No workers: synchronous fallback
+            var syncStart = Date.now();
+            totalScanAttempts++;
+            var qrData = jsQR(imageData.data, imageData.width, imageData.height, jsqrOpts);
+            if (qrData && qrData.binaryData && qrData.binaryData.length > 0) {
+              qrDetected++;
+              qrWithData++;
+              var frameBytes = new Uint8Array(qrData.binaryData);
+              var result = Receiver.ingestFrameBinary(frameBytes);
+              if (result.status === 'new') handleResult(result);
+              else if (result.status === 'complete') handleResult(result);
+              else if (result.status === 'bad') flashIndicator('fail');
+            } else if (qrData) {
+              qrDetected++;
+            }
+            lastScanDuration = Date.now() - syncStart;
+          }
         } catch (e) {
-          workerBusy[useWorker] = false;
+          if (useWorker >= 0) workerBusy[useWorker] = false;
         }
       } else {
-        workerBusy[useWorker] = false;
+        if (useWorker >= 0) workerBusy[useWorker] = false;
       }
 
       // Update diagnostic every 15 dispatched scans
