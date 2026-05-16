@@ -365,7 +365,10 @@ input[type=file] { display: none; }
 
     showFrame();
     if (timer) clearInterval(timer);
-    var activeInterval = parseInt(document.getElementById('optInterval').value) || state.intervalMs;
+    var domInterval = parseInt(document.getElementById('optInterval').value);
+    var activeInterval = domInterval || state.intervalMs;
+    document.getElementById('shaDisplay').textContent = 'SHA-256: ' + state.sha256hex +
+      '  [mode=' + senderMode + ' interval=' + activeInterval + 'ms dom=' + (domInterval || '?') + ']';
     timer = setInterval(function() {
       if (!paused) showFrame();
     }, activeInterval);
