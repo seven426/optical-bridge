@@ -214,6 +214,7 @@ input[type=file] { display: none; }
   var activeInterval = 150;
   var selfTestTick = 0;
   var selfTestSkipCount = 0;
+  var qrCode = null;
 
   function showStage(n) {
     stage1.classList.toggle('active', n === 1);
@@ -344,6 +345,7 @@ input[type=file] { display: none; }
     if (elapsedTimer) clearInterval(elapsedTimer);
     timer = null;
     elapsedTimer = null;
+    qrCode = null;
     qrWrapper.innerHTML = '';
     fileInput.value = '';
     showStage(1);
@@ -368,6 +370,18 @@ input[type=file] { display: none; }
       document.getElementById('statElapsed').textContent = m + ':' + s;
     }, 1000);
 
+    // Create QRCode renderer once, reuse via makeCode() for speed
+    var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
+    qrWrapper.innerHTML = '';
+    qrCode = new QRCode(qrWrapper, {
+      text: 'placeholder',
+      width: qrSize,
+      height: qrSize,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
+    });
+
     showFrame();
     if (timer) clearInterval(timer);
     var domInterval = parseInt(document.getElementById('optInterval').value);
@@ -391,16 +405,7 @@ input[type=file] { display: none; }
         binary += String.fromCharCode(frame[i]);
       }
 
-      var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
-      qrWrapper.innerHTML = '';
-      new QRCode(qrWrapper, {
-        text: binary,
-        width: qrSize,
-        height: qrSize,
-        colorDark: '#000000',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
-      });
+      qrCode.makeCode(binary);
 
       var unpacked = FrameProtocol.unpackFrame(frame);
       var frameIdx = unpacked ? unpacked.frameIdx : '?';
