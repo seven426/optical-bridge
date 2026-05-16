@@ -94,13 +94,20 @@ input[type=file] { display: none; }
     <button class="settings-toggle" id="settingsToggle">Settings</button>
     <div class="settings-body" id="settingsBody">
       <div class="setting-row">
+        <label>Mode</label>
+        <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
+          <button class="mode-btn active" data-mode="camera">Camera</button>
+          <button class="mode-btn" data-mode="screen">Screen</button>
+        </div>
+      </div>
+      <div class="setting-row">
         <label>Frame interval</label>
         <select id="optInterval">
+          <option value="33">33 ms</option>
+          <option value="50">50 ms</option>
           <option value="100">100 ms</option>
-          <option value="150">150 ms</option>
-          <option value="200">200 ms</option>
           <option value="150" selected>150 ms</option>
-          <option value="250">250 ms</option>
+          <option value="200">200 ms</option>
           <option value="300">300 ms</option>
           <option value="500">500 ms</option>
         </select>
@@ -108,14 +115,15 @@ input[type=file] { display: none; }
       <div class="setting-row">
         <label>QR version</label>
         <select id="optQRVersion">
-          <option value="0">Auto (by screen height)</option>
-          <option value="5">V5 (37x37, ~76B)</option>
-          <option value="6">V6 (41x41, ~106B)</option>
-          <option value="7">V7 (45x45, ~136B)</option>
-          <option value="8">V8 (49x49, ~170B)</option>
+          <option value="0">Auto</option>
           <option value="10" selected>V10 (57x57, ~270B)</option>
           <option value="12">V12 (65x65, ~400B)</option>
           <option value="15">V15 (73x73, ~640B)</option>
+          <option value="16">V16 (81x81, ~760B)</option>
+          <option value="18">V18 (89x89, ~1070B)</option>
+          <option value="20">V20 (97x97, ~1470B)</option>
+          <option value="23">V23 (109x109, ~1940B)</option>
+          <option value="25">V25 (117x117, ~2380B)</option>
         </select>
       </div>
       <div class="setting-row">
@@ -226,15 +234,38 @@ input[type=file] { display: none; }
 
   settingsToggle.addEventListener('click', function() { settingsBody.classList.toggle('open'); });
 
+  var senderMode = 'camera';
+
+  var modeDefaults = {
+    camera: { interval: 150, qrVersion: 10 },
+    screen: { interval: 50,  qrVersion: 20 }
+  };
+
+  function applyModeDefaults(mode) {
+    senderMode = mode;
+    var d = modeDefaults[mode];
+    document.getElementById('optInterval').value = String(d.interval);
+    document.getElementById('optQRVersion').value = String(d.qrVersion);
+  }
+
+  document.getElementById('senderMode').addEventListener('click', function(e) {
+    if (!e.target.classList.contains('mode-btn')) return;
+    var buttons = document.getElementById('senderMode').querySelectorAll('.mode-btn');
+    for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
+    e.target.classList.add('active');
+    applyModeDefaults(e.target.dataset.mode);
+  });
+
   function getSettings() {
-    var qrVer = parseInt(document.getElementById('optQRVersion').value) || Sender.pickQRVersion();
+    var qrVer = parseInt(document.getElementById('optQRVersion').value) || Sender.pickQRVersion(senderMode);
     var fecParts = document.getElementById('optFEC').value.split(',');
     return {
       frameInterval: parseInt(document.getElementById('optInterval').value),
       qrVersion: qrVer,
       fecK: parseInt(fecParts[0]),
       fecN: parseInt(fecParts[1]),
-      ecLevel: document.getElementById('optECLevel').value
+      ecLevel: document.getElementById('optECLevel').value,
+      mode: senderMode
     };
   }
 

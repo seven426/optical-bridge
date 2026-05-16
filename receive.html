@@ -87,6 +87,10 @@ video { display: block; width: 100%; }
       <div class="reticle"></div>
       <div class="indicator" id="indicator"></div>
     </div>
+    <div class="mode-selector" id="receiverMode" style="display:flex;gap:4px;background:#1a1a1a;border-radius:6px;padding:3px;margin-bottom:8px;border:1px solid #333;">
+      <button class="mode-btn active" data-mode="camera" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">Camera</button>
+      <button class="mode-btn" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Screen Capture</button>
+    </div>
     <button class="btn btn-primary" id="btnStart">Start Camera</button>
   </div>
 
@@ -143,8 +147,31 @@ video { display: block; width: 100%; }
   var scanning = false;
   var scanTimer = null;
   var completeFile = null;
+  var receiverMode = 'camera';
 
-  btnStart.addEventListener('click', startCamera);
+  // Mode toggle
+  document.getElementById('receiverMode').addEventListener('click', function(e) {
+    if (!e.target.classList.contains('mode-btn')) return;
+    var buttons = document.getElementById('receiverMode').querySelectorAll('.mode-btn');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.remove('active');
+      buttons[i].style.background = 'transparent';
+      buttons[i].style.color = '#888';
+    }
+    e.target.classList.add('active');
+    e.target.style.background = '#555';
+    e.target.style.color = '#e0e0e0';
+    receiverMode = e.target.dataset.mode;
+    var label = receiverMode === 'screen' ? 'Start Screen Capture' : 'Start Camera';
+    btnStart.textContent = label;
+    // Show/hide reticle (only for camera mode)
+    document.querySelector('.reticle').style.display = receiverMode === 'screen' ? 'none' : '';
+  });
+
+  btnStart.addEventListener('click', function() {
+    if (receiverMode === 'screen') startScreenCapture();
+    else startCamera();
+  });
 
   async function startCamera() {
     try {
@@ -160,18 +187,52 @@ video { display: block; width: 100%; }
       document.getElementById('diagSection').style.display = 'block';
 
       Receiver.init();
-      startScanning();
+      startScanning(false);  // camera mode: throttle, downscale
     } catch (err) {
       alert('Camera access denied. Please allow camera permissions and try again.\n\n' + err.message);
     }
   }
 
-  function startScanning() {
+  async function startScreenCapture() {
+    try {
+      var stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }
+      });
+      video.srcObject = stream;
+      btnStart.style.display = 'none';
+      document.getElementById('statsSection').style.display = 'grid';
+      document.getElementById('heatmapSection').style.display = 'block';
+      document.getElementById('recentSection').style.display = 'block';
+      document.getElementById('missingSection').style.display = 'block';
+      document.getElementById('diagSection').style.display = 'block';
+
+      // Handle user stopping screen share
+      stream.getVideoTracks()[0].addEventListener('ended', function() {
+        stopScanning();
+        video.srcObject = null;
+        btnStart.style.display = 'block';
+        document.getElementById('statsSection').style.display = 'none';
+        document.getElementById('heatmapSection').style.display = 'none';
+        document.getElementById('recentSection').style.display = 'none';
+        document.getElementById('missingSection').style.display = 'none';
+        document.getElementById('diagSection').style.display = 'none';
+        document.getElementById('downloadSection').classList.remove('show');
+      });
+
+      Receiver.init();
+      startScanning(true);  // screen mode: full rate, less downscale
+    } catch (err) {
+      alert('Screen capture denied or cancelled.\n\n' + err.message);
+    }
+  }
+
+  function startScanning(screenMode) {
     scanning = true;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     var scanTick = 0;
-    var SCAN_EVERY_N = 2;  // throttle jsQR to ~30fps
+    var SCAN_EVERY_N = screenMode ? 1 : 2;  // screen: every frame, camera: every 2nd
+    var MAX_SCAN_DIM = screenMode ? 1280 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
     var qrWithData = 0;
@@ -188,8 +249,7 @@ video { display: block; width: 100%; }
       }
 
       if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
-        // Downscale to max 640px for jsQR performance
-        var MAX_SCAN_DIM = 640;
+        // Downscale for jsQR performance (MAX_SCAN_DIM set by mode)
         var scaleX = Math.min(1, MAX_SCAN_DIM / video.videoWidth);
         var scaleY = Math.min(1, MAX_SCAN_DIM / video.videoHeight);
         var scale = Math.min(scaleX, scaleY);
