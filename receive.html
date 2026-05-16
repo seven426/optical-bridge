@@ -236,7 +236,7 @@ video { display: block; width: 100%; }
     scanning = true;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
-    var SCAN_INTERVAL_MS = screenMode ? 50 : 150;  // time-based throttle, independent of jsQR speed
+    var SCAN_INTERVAL_MS = screenMode ? 50 : 150;
     var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
@@ -244,50 +244,33 @@ video { display: block; width: 100%; }
     var lastDiagUpdate = 0;
     var lastScanTime = 0;
     var lastScanDuration = 0;
+    var scanId = 0;
 
-    function scan(now) {
-      if (!scanning) return;
+    // Worker pool: jsQR runs off main thread so frame capture isn't blocked
+    var workerCount = screenMode ? 2 : 1;
+    var workers = [];
+    var workerBusy = [];
+    for (var w = 0; w < workerCount; w++) {
+      workerBusy.push(false);
+      var worker = new Worker('lib/scan-worker.js');
+      worker.onmessage = function(e) {
+        var data = e.data;
+        var busyIdx = data.workerIdx;
+        workerBusy[busyIdx] = false;
 
-      // Time-based throttle: ensures consistent scan rate even when jsQR is slow
-      if (now - lastScanTime < SCAN_INTERVAL_MS) {
-        scanTimer = requestAnimationFrame(scan);
-        return;
-      }
-      lastScanTime = now;
+        if (!scanning) return;
 
-      if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
-        var scanStart = Date.now();
+        totalScanAttempts++;
 
-        // Downscale for jsQR performance (MAX_SCAN_DIM set by mode)
-        var scaleX = Math.min(1, MAX_SCAN_DIM / video.videoWidth);
-        var scaleY = Math.min(1, MAX_SCAN_DIM / video.videoHeight);
-        var scale = Math.min(scaleX, scaleY);
-        var scanW = Math.floor(video.videoWidth * scale);
-        var scanH = Math.floor(video.videoHeight * scale);
-
-        if (canvas.width !== scanW || canvas.height !== scanH) {
-          canvas.width = scanW;
-          canvas.height = scanH;
-        }
-        ctx.drawImage(video, 0, 0, scanW, scanH);
-
-        try {
-          var imageData = ctx.getImageData(0, 0, scanW, scanH);
-          var jsqrOpts = screenMode ? { inversionAttempts: 'dontInvert' } : {};
-          var qrData = jsQR(imageData.data, imageData.width, imageData.height, jsqrOpts);
-          totalScanAttempts++;
-
-        if (qrData && qrData.binaryData && qrData.binaryData.length > 0) {
+        if (data.result && data.result.binaryData && data.result.binaryData.length > 0) {
           qrDetected++;
           qrWithData++;
-          var frameBytes = new Uint8Array(qrData.binaryData);
-
+          var frameBytes = new Uint8Array(data.result.binaryData);
           var result = Receiver.ingestFrameBinary(frameBytes);
 
           if (result.status === 'new') {
             handleResult(result);
           } else if (result.status === 'processing') {
-            // All blocks ready, verifying SHA-256...
             updateUI();
             showProcessing();
             var promise = Receiver.getProcessingPromise();
@@ -302,33 +285,90 @@ video { display: block; width: 100%; }
           } else if (result.status === 'bad') {
             flashIndicator('fail');
           }
-        } else if (qrData) {
+        } else if (data.result) {
           qrDetected++;
-          // jsQR found a QR but no binaryData
         }
 
-        lastScanDuration = Date.now() - scanStart;
+        lastScanDuration = Date.now() - (data._sentAt || 0);
+      };
+      workers.push(worker);
+    }
 
-        // Update diagnostic every 15 scans
-        if (totalScanAttempts - lastDiagUpdate >= 15) {
-          lastDiagUpdate = totalScanAttempts;
-          var diagEl = document.getElementById('diagSection');
-          var elapsedStr = '';
-          if (firstFrameTime) {
-            var secs = Math.floor((Date.now() - firstFrameTime) / 1000);
-            var mins = Math.floor(secs / 60);
-            var remainSecs = secs % 60;
-            elapsedStr = ' | elapsed:' + mins + 'm' + remainSecs + 's';
-          }
-          var lastMs = lastScanDuration ? lastScanDuration + 'ms' : '?';
-          diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
-            ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH +
-            ' dur:' + lastMs + elapsedStr;
+    var scanW = 0, scanH = 0;
+
+    function scan(now) {
+      if (!scanning) return;
+
+      // Time-based throttle
+      if (now - lastScanTime < SCAN_INTERVAL_MS) {
+        scanTimer = requestAnimationFrame(scan);
+        return;
+      }
+      lastScanTime = now;
+
+      // Find an idle worker
+      var useWorker = -1;
+      for (var w = 0; w < workerCount; w++) {
+        if (!workerBusy[w]) { useWorker = w; break; }
+      }
+      if (useWorker === -1) {
+        // All workers busy, skip this frame
+        scanTimer = requestAnimationFrame(scan);
+        return;
+      }
+      workerBusy[useWorker] = true;
+
+      if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+        var scaleX = Math.min(1, MAX_SCAN_DIM / video.videoWidth);
+        var scaleY = Math.min(1, MAX_SCAN_DIM / video.videoHeight);
+        var scale = Math.min(scaleX, scaleY);
+        scanW = Math.floor(video.videoWidth * scale);
+        scanH = Math.floor(video.videoHeight * scale);
+
+        if (canvas.width !== scanW || canvas.height !== scanH) {
+          canvas.width = scanW;
+          canvas.height = scanH;
         }
+        ctx.drawImage(video, 0, 0, scanW, scanH);
 
+        try {
+          var imageData = ctx.getImageData(0, 0, scanW, scanH);
+          var jsqrOpts = screenMode ? { inversionAttempts: 'dontInvert' } : {};
+          var id = scanId++;
+
+          workers[useWorker].postMessage({
+            id: id,
+            workerIdx: useWorker,
+            pixels: imageData.data.buffer,
+            width: imageData.width,
+            height: imageData.height,
+            opts: jsqrOpts,
+            _sentAt: Date.now()
+          }, [imageData.data.buffer]);
         } catch (e) {
-          // jsQR or imageData may fail on some frames; skip and continue
+          workerBusy[useWorker] = false;
         }
+      } else {
+        workerBusy[useWorker] = false;
+      }
+
+      // Update diagnostic every 15 dispatched scans
+      if (scanId - lastDiagUpdate >= 15) {
+        lastDiagUpdate = scanId;
+        var diagEl = document.getElementById('diagSection');
+        var elapsedStr = '';
+        if (firstFrameTime) {
+          var secs = Math.floor((Date.now() - firstFrameTime) / 1000);
+          var mins = Math.floor(secs / 60);
+          var remainSecs = secs % 60;
+          elapsedStr = ' | elapsed:' + mins + 'm' + remainSecs + 's';
+        }
+        var lastMs = lastScanDuration ? lastScanDuration + 'ms' : '?';
+        var busyCount = 0;
+        for (var w = 0; w < workerCount; w++) { if (workerBusy[w]) busyCount++; }
+        diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
+          ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH +
+          ' dur:' + lastMs + ' busy:' + busyCount + '/' + workerCount + elapsedStr;
       }
 
       scanTimer = requestAnimationFrame(scan);
@@ -380,6 +420,8 @@ video { display: block; width: 100%; }
       cancelAnimationFrame(scanTimer);
       scanTimer = null;
     }
+    // Workers are created inside startScanning's closure; they'll be GC'd
+    // when stopScanning is called and the old closure is replaced
   }
 
   var uiUpdateTick = 0;
