@@ -231,8 +231,8 @@ video { display: block; width: 100%; }
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     var scanTick = 0;
-    var SCAN_EVERY_N = screenMode ? 1 : 2;  // screen: every frame, camera: every 2nd
-    var MAX_SCAN_DIM = screenMode ? 1280 : 640;
+    var SCAN_EVERY_N = screenMode ? 2 : 2;  // match sender rate, avoid overwhelming jsQR
+    var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
     var qrWithData = 0;
