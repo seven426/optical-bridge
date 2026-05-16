@@ -211,6 +211,9 @@ input[type=file] { display: none; }
   var elapsedSec = 0;
   var elapsedTimer = null;
   var cycleFrames = null;
+  var activeInterval = 150;
+  var selfTestTick = 0;
+  var selfTestSkipCount = 0;
 
   function showStage(n) {
     stage1.classList.toggle('active', n === 1);
@@ -328,6 +331,8 @@ input[type=file] { display: none; }
     cycleFrames = Sender.getCycleFrames();
     cycleFrameIdx = 0;
     roundCount = 0;
+    selfTestTick = 0;
+    selfTestSkipCount = 0;
     paused = false;
     btnPause.textContent = 'Pause';
     showStage(3);
@@ -366,7 +371,7 @@ input[type=file] { display: none; }
     showFrame();
     if (timer) clearInterval(timer);
     var domInterval = parseInt(document.getElementById('optInterval').value);
-    var activeInterval = domInterval || state.intervalMs;
+    activeInterval = domInterval || state.intervalMs;
     document.getElementById('shaDisplay').textContent = 'SHA-256: ' + state.sha256hex +
       '  [mode=' + senderMode + ' interval=' + activeInterval + 'ms dom=' + (domInterval || '?') + ']';
     timer = setInterval(function() {
@@ -402,48 +407,55 @@ input[type=file] { display: none; }
       var total = state.totalFrames || state.totalDataFrames || '?';
 
       // Self-test: decode QR from canvas using jsQR, verify roundtrip
-      try {
-        var diag = document.getElementById('diag');
-        diag.style.display = 'block';
-        var qrCanvas = qrWrapper.querySelector('canvas');
-        if (qrCanvas) {
-          var ctx2 = qrCanvas.getContext('2d');
-          var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
-          var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
-          if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
-            var recovered = new Uint8Array(decodedQr.binaryData);
-            var match = recovered.length === frame.length;
-            for (var bi = 0; bi < frame.length && match; bi++) {
-              if (frame[bi] !== recovered[bi]) match = false;
-            }
-            if (match) {
-              diag.innerHTML = 'DIAG OK: QR encode/decode roundtrip verified (' + recovered.length + ' bytes)';
-              diag.style.color = '#4caf50';
-            } else {
-              diag.innerHTML = 'DIAG FAIL: roundtrip mismatch (frame=' + frame.length + 'B, decoded=' + recovered.length + 'B)';
-              diag.style.color = '#f44336';
-              if (frame.length === recovered.length) {
-                for (var bi = 0; bi < frame.length; bi++) {
-                  if (frame[bi] !== recovered[bi]) {
-                    diag.innerHTML += ' first diff at byte[' + bi + ']: ' + frame[bi].toString(16) + ' vs ' + recovered[bi].toString(16);
-                    break;
+      // Skip self-test on fast intervals (screen mode) to avoid blocking the timer
+      var diag = document.getElementById('diag');
+      if (!selfTestSkipCount) {
+        selfTestSkipCount = (activeInterval < 80) ? 30 : 1;
+      }
+      selfTestTick++;
+      if (selfTestTick >= selfTestSkipCount) {
+        selfTestTick = 0;
+        try {
+          diag.style.display = 'block';
+          var qrCanvas = qrWrapper.querySelector('canvas');
+          if (qrCanvas) {
+            var ctx2 = qrCanvas.getContext('2d');
+            var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
+            var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
+            if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
+              var recovered = new Uint8Array(decodedQr.binaryData);
+              var match = recovered.length === frame.length;
+              for (var bi = 0; bi < frame.length && match; bi++) {
+                if (frame[bi] !== recovered[bi]) match = false;
+              }
+              if (match) {
+                diag.innerHTML = 'DIAG OK: QR encode/decode roundtrip verified (' + recovered.length + ' bytes)';
+                diag.style.color = '#4caf50';
+              } else {
+                diag.innerHTML = 'DIAG FAIL: roundtrip mismatch (frame=' + frame.length + 'B, decoded=' + recovered.length + 'B)';
+                diag.style.color = '#f44336';
+                if (frame.length === recovered.length) {
+                  for (var bi = 0; bi < frame.length; bi++) {
+                    if (frame[bi] !== recovered[bi]) {
+                      diag.innerHTML += ' first diff at byte[' + bi + ']: ' + frame[bi].toString(16) + ' vs ' + recovered[bi].toString(16);
+                      break;
+                    }
                   }
                 }
               }
+            } else if (decodedQr && decodedQr.data) {
+              diag.innerHTML = 'DIAG WARN: jsQR decoded text but no binaryData (data=' + decodedQr.data.length + ' chars)';
+              diag.style.color = '#ff9800';
+            } else {
+              diag.innerHTML = 'DIAG FAIL: jsQR could not decode QR from canvas';
+              diag.style.color = '#f44336';
             }
-          } else if (decodedQr && decodedQr.data) {
-            diag.innerHTML = 'DIAG WARN: jsQR decoded text but no binaryData (data=' + decodedQr.data.length + ' chars)';
-            diag.style.color = '#ff9800';
-          } else {
-            diag.innerHTML = 'DIAG FAIL: jsQR could not decode QR from canvas';
-            diag.style.color = '#f44336';
           }
+        } catch (e) {
+          diag.style.display = 'block';
+          diag.innerHTML = 'DIAG ERR: ' + e.message;
+          diag.style.color = '#f44336';
         }
-      } catch (e) {
-        var diag = document.getElementById('diag');
-        diag.style.display = 'block';
-        diag.innerHTML = 'DIAG ERR: ' + e.message;
-        diag.style.color = '#f44336';
       }
 
       document.getElementById('statFrame').textContent = frameIdx + '/' + total;
