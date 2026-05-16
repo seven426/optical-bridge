@@ -163,6 +163,7 @@ input[type=file] { display: none; }
       <button class="btn btn-pause" id="btnPause">Pause</button>
       <button class="btn btn-stop" id="btnStop">Stop</button>
     </div>
+    <div id="diag" style="margin-top:12px;padding:8px;background:#f5f5f5;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:center;display:none;"></div>
   </div>
 </div>
 
@@ -173,6 +174,7 @@ input[type=file] { display: none; }
 <script src="lib/sha256.js"></script>
 <script src="lib/sender.js"></script>
 <script src="lib/qrcode.js"></script>
+<script src="lib/jsQR.js"></script>
 <script>
 (function() {
   var stage1 = document.getElementById('stage1');
@@ -333,21 +335,6 @@ input[type=file] { display: none; }
     }, state.intervalMs);
   }
 
-  var maxB64Len = 0;
-  function ensureMaxB64Len() {
-    if (maxB64Len > 0) return;
-    var allFrames = Sender.getState().frames;
-    if (!allFrames) return;
-    for (var i = 0; i < allFrames.length; i++) {
-      var bin = '';
-      for (var j = 0; j < allFrames[i].length; j++) {
-        bin += String.fromCharCode(allFrames[i][j]);
-      }
-      var b64 = btoa(bin);
-      if (b64.length > maxB64Len) maxB64Len = b64.length;
-    }
-  }
-
   function showFrame() {
     if (!cycleFrames || cycleFrames.length === 0) return;
 
@@ -355,21 +342,15 @@ input[type=file] { display: none; }
       var state = Sender.getState();
       var frame = cycleFrames[cycleFrameIdx];
 
-      ensureMaxB64Len();
-
       var binary = '';
       for (var i = 0; i < frame.length; i++) {
         binary += String.fromCharCode(frame[i]);
-      }
-      var b64 = btoa(binary);
-      while (maxB64Len > 0 && b64.length < maxB64Len) {
-        b64 += 'A';
       }
 
       var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
       qrWrapper.innerHTML = '';
       new QRCode(qrWrapper, {
-        text: b64,
+        text: binary,
         width: qrSize,
         height: qrSize,
         colorDark: '#000000',
@@ -380,6 +361,51 @@ input[type=file] { display: none; }
       var unpacked = FrameProtocol.unpackFrame(frame);
       var frameIdx = unpacked ? unpacked.frameIdx : '?';
       var total = state.totalFrames || state.totalDataFrames || '?';
+
+      // Self-test: decode QR from canvas using jsQR, verify roundtrip
+      try {
+        var diag = document.getElementById('diag');
+        diag.style.display = 'block';
+        var qrCanvas = qrWrapper.querySelector('canvas');
+        if (qrCanvas) {
+          var ctx2 = qrCanvas.getContext('2d');
+          var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
+          var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
+          if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
+            var recovered = new Uint8Array(decodedQr.binaryData);
+            var match = recovered.length === frame.length;
+            for (var bi = 0; bi < frame.length && match; bi++) {
+              if (frame[bi] !== recovered[bi]) match = false;
+            }
+            if (match) {
+              diag.innerHTML = 'DIAG OK: QR encode/decode roundtrip verified (' + recovered.length + ' bytes)';
+              diag.style.color = '#4caf50';
+            } else {
+              diag.innerHTML = 'DIAG FAIL: roundtrip mismatch (frame=' + frame.length + 'B, decoded=' + recovered.length + 'B)';
+              diag.style.color = '#f44336';
+              if (frame.length === recovered.length) {
+                for (var bi = 0; bi < frame.length; bi++) {
+                  if (frame[bi] !== recovered[bi]) {
+                    diag.innerHTML += ' first diff at byte[' + bi + ']: ' + frame[bi].toString(16) + ' vs ' + recovered[bi].toString(16);
+                    break;
+                  }
+                }
+              }
+            }
+          } else if (decodedQr && decodedQr.data) {
+            diag.innerHTML = 'DIAG WARN: jsQR decoded text but no binaryData (data=' + decodedQr.data.length + ' chars)';
+            diag.style.color = '#ff9800';
+          } else {
+            diag.innerHTML = 'DIAG FAIL: jsQR could not decode QR from canvas';
+            diag.style.color = '#f44336';
+          }
+        }
+      } catch (e) {
+        var diag = document.getElementById('diag');
+        diag.style.display = 'block';
+        diag.innerHTML = 'DIAG ERR: ' + e.message;
+        diag.style.color = '#f44336';
+      }
 
       document.getElementById('statFrame').textContent = frameIdx + '/' + total;
       if (total !== '?') {

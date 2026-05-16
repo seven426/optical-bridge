@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>QR Encode/Decode Test</title>
+<style>
+body { font-family: monospace; max-width: 700px; margin: 20px auto; background: #111; color: #eee; }
+.pass { color: #4caf50; } .fail { color: #f44336; } .info { color: #888; }
+.result { margin: 4px 0; padding: 4px 8px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>QR Encode/Decode Self-Test</h1>
+<div id="results"></div>
+
+<script src="../lib/qrcode.js"></script>
+<script src="../lib/jsQR.js"></script>
+<script src="../lib/gf256.js"></script>
+<script src="../lib/frame-protocol.js"></script>
+<script src="../lib/reed-solomon.js"></script>
+<script src="../lib/sha256.js"></script>
+<script src="../lib/sender.js"></script>
+<script src="../lib/receiver.js"></script>
+<script>
+var results = document.getElementById('results');
+var passed = 0, failed = 0;
+
+function assert(cond, name) {
+  var el = document.createElement('div');
+  el.className = 'result';
+  if (cond) { passed++; el.innerHTML = '<span class="pass">PASS</span> ' + name; }
+  else { failed++; el.innerHTML = '<span class="fail">FAIL</span> ' + name; }
+  results.appendChild(el);
+}
+
+function info(msg) {
+  var el = document.createElement('div');
+  el.className = 'result';
+  el.innerHTML = '<span class="info">INFO</span> ' + msg;
+  results.appendChild(el);
+}
+
+// Hex dump helper
+function hex(bytes, max) {
+  if (max === undefined) max = 64;
+  var s = '';
+  for (var i = 0; i < Math.min(bytes.length, max); i++) {
+    s += bytes[i].toString(16).padStart(2, '0') + ' ';
+  }
+  if (bytes.length > max) s += '...';
+  return s;
+}
+
+// Create a QR code, decode it, and return jsQR result
+function qrRoundTrip(binaryStr, version, ecLevel) {
+  var wrapper = document.createElement('div');
+  wrapper.style.display = 'none';
+  document.body.appendChild(wrapper);
+
+  var level = QRCode.CorrectLevel[ecLevel] || QRCode.CorrectLevel.L;
+  var qrCode = new QRCode(wrapper, {
+    text: binaryStr,
+    width: 400,
+    height: 400,
+    correctLevel: level
+  });
+
+  var canvas = wrapper.querySelector('canvas');
+  if (!canvas) { document.body.removeChild(wrapper); return null; }
+
+  var ctx = canvas.getContext('2d');
+  var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  var decoded = jsQR(imageData.data, imageData.width, imageData.height);
+  document.body.removeChild(wrapper);
+  return decoded;
+}
+
+// Build a payload with all byte values 0x00-0xFF for edge-case testing
+function buildEdgePayload() {
+  var payload = new Uint8Array(256);
+  for (var i = 0; i < 256; i++) payload[i] = i;
+  return payload;
+}
+
+// Build a random-ish payload of given length
+function buildRandomPayload(len) {
+  var payload = new Uint8Array(len);
+  for (var i = 0; i < len; i++) payload[i] = (i * 73 + 31) & 0xFF;
+  return payload;
+}
+
+function arraysEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+// ============ Test 1: Edge bytes 0x00-0xFF roundtrip ============
+(function() {
+  info('Test 1: Edge bytes 0x00-0xFF through QR encode/decode (V10, L)');
+
+  var payload = buildEdgePayload();
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 42, totalFrames: 100,
+    fecGroup: 0, fecGroupSize: 6, fecK: 5, fileSize: 1024,
+    payload: payload
+  });
+
+  // Convert to Latin-1 string
+  var binaryStr = '';
+  for (var i = 0; i < frame.length; i++) {
+    binaryStr += String.fromCharCode(frame[i]);
+  }
+
+  info('  Frame size: ' + frame.length + ' bytes, string length: ' + binaryStr.length);
+
+  var decoded = qrRoundTrip(binaryStr, 10, 'L');
+  if (!decoded) { assert(false, 'QR decode returned null'); return; }
+
+  info('  Decoded binaryData length: ' + (decoded.binaryData ? decoded.binaryData.length : 'null'));
+
+  if (!decoded.binaryData) {
+    assert(false, 'binaryData missing from jsQR result');
+    return;
+  }
+
+  var decodedBytes = new Uint8Array(decoded.binaryData);
+  assert(arraysEqual(frame, decodedBytes), 'Full frame bytes match (256 edge values)');
+
+  var unpacked = FrameProtocol.unpackFrame(decodedBytes);
+  assert(unpacked !== null, 'FrameProtocol.unpackFrame succeeds');
+  if (unpacked) {
+    assert(unpacked.frameIdx === 42, 'frameIdx = 42');
+    assert(unpacked.fecK === 5, 'fecK = 5');
+    assert(unpacked.fileSize === 1024, 'fileSize = 1024');
+    assert(arraysEqual(unpacked.payload, payload), 'Payload bytes match');
+  }
+})();
+
+// ============ Test 2: Various frame sizes ============
+(function() {
+  info('Test 2: Various payload sizes (V10, L)');
+
+  var sizes = [1, 10, 100, 200, 251]; // 251 = max payload for V10+L
+  for (var s = 0; s < sizes.length; s++) {
+    var len = sizes[s];
+    var payload = buildRandomPayload(len);
+    var frame = FrameProtocol.packFrame({
+      fileId: 0, frameIdx: s, totalFrames: 10,
+      fecGroup: 0, fecGroupSize: 6, fecK: 5, fileSize: 1024,
+      payload: payload
+    });
+
+    var binaryStr = '';
+    for (var i = 0; i < frame.length; i++) {
+      binaryStr += String.fromCharCode(frame[i]);
+    }
+
+    var decoded = qrRoundTrip(binaryStr, 10, 'L');
+    var ok = decoded && decoded.binaryData && arraysEqual(frame, new Uint8Array(decoded.binaryData));
+    assert(ok, 'Payload size ' + len + 'B → frame ' + frame.length + 'B roundtrip');
+  }
+})();
+
+// ============ Test 3: Different QR versions ============
+(function() {
+  info('Test 3: Different QR versions');
+
+  var tests = [
+    { version: 5, ec: 'L', payloadLen: 56 },   // 76-20
+    { version: 8, ec: 'L', payloadLen: 150 },  // 170-20
+    { version: 10, ec: 'M', payloadLen: 193 }, // 213-20
+    { version: 12, ec: 'L', payloadLen: 250 }, // 398-20
+  ];
+
+  for (var t = 0; t < tests.length; t++) {
+    var test = tests[t];
+    var payload = buildRandomPayload(test.payloadLen);
+    var frame = FrameProtocol.packFrame({
+      fileId: 0, frameIdx: t, totalFrames: 10,
+      fecGroup: 0, fecGroupSize: 6, fecK: 5, fileSize: 4096,
+      payload: payload
+    });
+
+    var binaryStr = '';
+    for (var i = 0; i < frame.length; i++) {
+      binaryStr += String.fromCharCode(frame[i]);
+    }
+
+    var decoded = qrRoundTrip(binaryStr, test.version, test.ec);
+    var ok = decoded && decoded.binaryData && arraysEqual(frame, new Uint8Array(decoded.binaryData));
+    assert(ok, 'V' + test.version + ' + EC-' + test.ec + ' payload=' + test.payloadLen + 'B');
+  }
+})();
+
+// ============ Test 4: Null byte handling ============
+(function() {
+  info('Test 4: Null bytes and high bytes');
+
+  var payload = new Uint8Array(10);
+  payload[0] = 0x00;
+  payload[1] = 0xFF;
+  payload[2] = 0x80;
+  payload[3] = 0x7F;
+  payload[4] = 0x00;
+  payload[5] = 0x81;
+  payload[6] = 0xFE;
+  payload[7] = 0x01;
+  payload[8] = 0xAA;
+  payload[9] = 0x55;
+
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 0, totalFrames: 1,
+    fecGroup: 0, fecGroupSize: 6, fecK: 5, fileSize: 10,
+    payload: payload
+  });
+
+  var binaryStr = '';
+  for (var i = 0; i < frame.length; i++) {
+    binaryStr += String.fromCharCode(frame[i]);
+  }
+
+  var decoded = qrRoundTrip(binaryStr, 10, 'L');
+  assert(decoded && decoded.binaryData && arraysEqual(frame, new Uint8Array(decoded.binaryData)),
+    'Null & high bytes (00 FF 80 7F 00 81 FE 01 AA 55) roundtrip');
+})();
+
+// ============ Summary ============
+(function() {
+  var el = document.createElement('div');
+  el.className = 'result';
+  el.style.marginTop = '16px';
+  el.style.fontWeight = 'bold';
+  if (failed === 0) {
+    el.innerHTML = '<span class="pass">ALL ' + passed + ' TESTS PASSED</span>';
+  } else {
+    el.innerHTML = '<span class="pass">' + passed + ' passed</span>, <span class="fail">' + failed + ' FAILED</span>';
+  }
+  results.appendChild(el);
+})();
+</script>
+</body>
+</html>

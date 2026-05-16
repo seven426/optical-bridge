@@ -97,6 +97,8 @@ video { display: block; width: 100%; }
     <div class="stat"><div class="value" id="statMissing">-</div><div class="label">Missing</div></div>
   </div>
 
+  <div id="diagSection" style="display:none;margin-top:8px;padding:6px 10px;background:#1a1a1a;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:center;"></div>
+
   <div class="heatmap-container" id="heatmapSection" style="display:none;">
     <h3>Frame Map (green=data, blue=parity, red=missing)</h3>
     <div class="heatmap" id="heatmap"></div>
@@ -155,6 +157,7 @@ video { display: block; width: 100%; }
       document.getElementById('heatmapSection').style.display = 'block';
       document.getElementById('recentSection').style.display = 'block';
       document.getElementById('missingSection').style.display = 'block';
+      document.getElementById('diagSection').style.display = 'block';
 
       Receiver.init();
       startScanning();
@@ -169,6 +172,10 @@ video { display: block; width: 100%; }
     var ctx = canvas.getContext('2d');
     var scanTick = 0;
     var SCAN_EVERY_N = 2;  // throttle jsQR to ~30fps
+    var totalScanAttempts = 0;
+    var qrDetected = 0;
+    var qrWithData = 0;
+    var lastDiagUpdate = 0;
 
     function scan() {
       if (!scanning) return;
@@ -198,25 +205,12 @@ video { display: block; width: 100%; }
         try {
           var imageData = ctx.getImageData(0, 0, scanW, scanH);
           var qrData = jsQR(imageData.data, imageData.width, imageData.height);
+          totalScanAttempts++;
 
-        if (qrData && qrData.data) {
-          var frameBytes;
-
-          // Base64-decode the QR data (sender Base64-encodes frame binary)
-          try {
-            var binary = atob(qrData.data);
-            frameBytes = new Uint8Array(binary.length);
-            for (var i = 0; i < binary.length; i++) {
-              frameBytes[i] = binary.charCodeAt(i) & 0xFF;
-            }
-          } catch (e) {
-            // Fallback: try raw string if not Base64
-            var str = qrData.data;
-            frameBytes = new Uint8Array(str.length);
-            for (var i = 0; i < str.length; i++) {
-              frameBytes[i] = str.charCodeAt(i) & 0xFF;
-            }
-          }
+        if (qrData && qrData.binaryData && qrData.binaryData.length > 0) {
+          qrDetected++;
+          qrWithData++;
+          var frameBytes = new Uint8Array(qrData.binaryData);
 
           var result = Receiver.ingestFrameBinary(frameBytes);
 
@@ -238,6 +232,17 @@ video { display: block; width: 100%; }
           } else if (result.status === 'bad') {
             flashIndicator('fail');
           }
+        } else if (qrData) {
+          qrDetected++;
+          // jsQR found a QR but no binaryData
+        }
+
+        // Update diagnostic every 15 scans
+        if (totalScanAttempts - lastDiagUpdate >= 15) {
+          lastDiagUpdate = totalScanAttempts;
+          var diagEl = document.getElementById('diagSection');
+          diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
+            ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH;
         }
 
         } catch (e) {
