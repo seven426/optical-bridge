@@ -236,23 +236,23 @@ video { display: block; width: 100%; }
     scanning = true;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
-    var scanTick = 0;
-    var SCAN_EVERY_N = screenMode ? 2 : 2;  // match sender rate, avoid overwhelming jsQR
+    var SCAN_INTERVAL_MS = screenMode ? 50 : 150;  // time-based throttle, independent of jsQR speed
     var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
     var qrWithData = 0;
     var lastDiagUpdate = 0;
+    var lastScanTime = 0;
 
-    function scan() {
+    function scan(now) {
       if (!scanning) return;
-      scanTick++;
 
-      // Throttle: only scan every N frames to avoid CPU overload
-      if (scanTick % SCAN_EVERY_N !== 0) {
+      // Time-based throttle: ensures consistent scan rate even when jsQR is slow
+      if (now - lastScanTime < SCAN_INTERVAL_MS) {
         scanTimer = requestAnimationFrame(scan);
         return;
       }
+      lastScanTime = now;
 
       if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
         // Downscale for jsQR performance (MAX_SCAN_DIM set by mode)
