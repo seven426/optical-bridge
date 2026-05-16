@@ -237,12 +237,13 @@ video { display: block; width: 100%; }
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     var SCAN_INTERVAL_MS = screenMode ? 50 : 150;  // time-based throttle, independent of jsQR speed
-    var MAX_SCAN_DIM = screenMode ? 1280 : 640;
+    var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
     var qrWithData = 0;
     var lastDiagUpdate = 0;
     var lastScanTime = 0;
+    var lastScanDuration = 0;
 
     function scan(now) {
       if (!scanning) return;
@@ -255,6 +256,8 @@ video { display: block; width: 100%; }
       lastScanTime = now;
 
       if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+        var scanStart = Date.now();
+
         // Downscale for jsQR performance (MAX_SCAN_DIM set by mode)
         var scaleX = Math.min(1, MAX_SCAN_DIM / video.videoWidth);
         var scaleY = Math.min(1, MAX_SCAN_DIM / video.videoHeight);
@@ -303,6 +306,8 @@ video { display: block; width: 100%; }
           // jsQR found a QR but no binaryData
         }
 
+        lastScanDuration = Date.now() - scanStart;
+
         // Update diagnostic every 15 scans
         if (totalScanAttempts - lastDiagUpdate >= 15) {
           lastDiagUpdate = totalScanAttempts;
@@ -314,8 +319,10 @@ video { display: block; width: 100%; }
             var remainSecs = secs % 60;
             elapsedStr = ' | elapsed:' + mins + 'm' + remainSecs + 's';
           }
+          var lastMs = lastScanDuration ? lastScanDuration + 'ms' : '?';
           diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
-            ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH + elapsedStr;
+            ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH +
+            ' dur:' + lastMs + elapsedStr;
         }
 
         } catch (e) {

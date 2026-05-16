@@ -374,10 +374,10 @@ input[type=file] { display: none; }
     }, 1000);
 
     // Create QRCode renderer once, reuse via makeCode() for speed
-    // Scale QR size with version so modules stay resolvable after capture+downscale
+    // Screen mode: grow QR with version so modules stay >=2px after 960px scan downscale
     var modCount = 4 * (state.qrVersion || 10) + 17;  // modules per side: 4*V+17
     var qrSize = senderMode === 'screen'
-      ? Math.max(400, Math.min(window.innerHeight - 40, Math.floor(modCount * 3.5)))
+      ? Math.max(480, Math.min(window.innerHeight - 40, Math.floor(modCount * 4)))
       : Math.min(500, Math.floor(window.innerHeight * 0.65));
     qrWrapper.innerHTML = '';
     qrCode = new QRCode(qrWrapper, {
