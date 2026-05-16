@@ -371,7 +371,8 @@ input[type=file] { display: none; }
     }, 1000);
 
     // Create QRCode renderer once, reuse via makeCode() for speed
-    var qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
+    // Screen mode uses smaller canvas (camera needs bigger for optical readability)
+    var qrSize = senderMode === 'screen' ? 300 : Math.min(500, Math.floor(window.innerHeight * 0.65));
     qrWrapper.innerHTML = '';
     qrCode = new QRCode(qrWrapper, {
       text: 'placeholder',
