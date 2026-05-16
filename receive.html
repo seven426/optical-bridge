@@ -235,7 +235,7 @@ video { display: block; width: 100%; }
   function startScanning(screenMode) {
     scanning = true;
     var canvas = document.createElement('canvas');
-    var ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
     var SCAN_INTERVAL_MS = screenMode ? 50 : 150;  // time-based throttle, independent of jsQR speed
     var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
@@ -273,7 +273,8 @@ video { display: block; width: 100%; }
 
         try {
           var imageData = ctx.getImageData(0, 0, scanW, scanH);
-          var qrData = jsQR(imageData.data, imageData.width, imageData.height);
+          var jsqrOpts = screenMode ? { inversionAttempts: 'dontInvert' } : {};
+          var qrData = jsQR(imageData.data, imageData.width, imageData.height, jsqrOpts);
           totalScanAttempts++;
 
         if (qrData && qrData.binaryData && qrData.binaryData.length > 0) {
