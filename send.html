@@ -339,6 +339,7 @@ input[type=file] { display: none; }
     selfTestSkipCount = 0;
     paused = false;
     btnPause.textContent = 'Pause';
+    shuffleCycle();
     showStage(3);
     startDisplay();
   }
@@ -398,6 +399,17 @@ input[type=file] { display: none; }
     timer = setInterval(function() {
       if (!paused) showFrame();
     }, activeInterval);
+  }
+
+  function shuffleCycle() {
+    // Fisher-Yates shuffle: breaks up consecutive frames from same FEC block
+    // so burst losses get distributed across blocks instead of wiping one out
+    for (var i = cycleFrames.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = cycleFrames[i];
+      cycleFrames[i] = cycleFrames[j];
+      cycleFrames[j] = tmp;
+    }
   }
 
   function showFrame() {
@@ -480,6 +492,7 @@ input[type=file] { display: none; }
         cycleFrameIdx = 0;
         roundCount++;
         document.getElementById('statRound').textContent = roundCount;
+        shuffleCycle();
       }
     } catch (e) {
       console.error('showFrame error:', e);
@@ -488,6 +501,7 @@ input[type=file] { display: none; }
         cycleFrameIdx = 0;
         roundCount++;
         document.getElementById('statRound').textContent = roundCount;
+        shuffleCycle();
       }
     }
   }
