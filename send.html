@@ -105,6 +105,8 @@ input[type=file] { display: none; }
         <select id="optInterval">
           <option value="33">33 ms</option>
           <option value="50">50 ms</option>
+          <option value="66">66 ms</option>
+          <option value="80">80 ms</option>
           <option value="100">100 ms</option>
           <option value="150" selected>150 ms</option>
           <option value="200">200 ms</option>
@@ -426,10 +428,6 @@ input[type=file] { display: none; }
 
       qrCode.makeCode(binary);
 
-      var unpacked = FrameProtocol.unpackFrame(frame);
-      var frameIdx = unpacked ? unpacked.frameIdx : '?';
-      var total = state.totalFrames || state.totalDataFrames || '?';
-
       // Self-test: decode QR from canvas using jsQR, verify roundtrip
       // Skip self-test on fast intervals (screen mode) to avoid blocking the timer
       var diag = document.getElementById('diag');
@@ -482,10 +480,8 @@ input[type=file] { display: none; }
         }
       }
 
-      document.getElementById('statFrame').textContent = frameIdx + '/' + total;
-      if (total !== '?') {
-        document.getElementById('statProgress').textContent = Math.round((parseInt(frameIdx) / parseInt(total)) * 100) + '%';
-      }
+      document.getElementById('statFrame').textContent = (cycleFrameIdx + 1) + '/' + cycleFrames.length;
+      document.getElementById('statProgress').textContent = Math.round(((cycleFrameIdx + 1) / cycleFrames.length) * 100) + '%';
 
       cycleFrameIdx++;
       if (cycleFrameIdx >= cycleFrames.length) {
