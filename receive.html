@@ -244,6 +244,29 @@ video { display: block; width: 100%; }
     var lastDiagUpdate = 0;
     var lastScanTime = 0;
     var lastScanDuration = 0;
+    var qrRegion = null;       // {x,y,w,h} crop region in scan coords, set after first decode
+    var cropMissCount = 0;     // consecutive crop failures, reset region after several
+
+    function saveCropRegion(loc, imgW, imgH) {
+      // Compute bounding box from QR corner points, add 15% padding
+      var pts = [loc.topLeftCorner, loc.topRightCorner, loc.bottomRightCorner, loc.bottomLeftCorner];
+      if (!pts[0] || !pts[0].x) return;
+      var minX = imgW, maxX = 0, minY = imgH, maxY = 0;
+      for (var p = 0; p < pts.length; p++) {
+        if (pts[p].x < minX) minX = pts[p].x;
+        if (pts[p].x > maxX) maxX = pts[p].x;
+        if (pts[p].y < minY) minY = pts[p].y;
+        if (pts[p].y > maxY) maxY = pts[p].y;
+      }
+      var padX = Math.max((maxX - minX) * 0.15, 15);
+      var padY = Math.max((maxY - minY) * 0.15, 15);
+      qrRegion = {
+        x: Math.max(0, Math.floor(minX - padX)),
+        y: Math.max(0, Math.floor(minY - padY)),
+        w: Math.min(imgW, Math.ceil(maxX - minX + padX * 2)),
+        h: Math.min(imgH, Math.ceil(maxY - minY + padY * 2))
+      };
+    }
 
     function scan(now) {
       if (!scanning) return;
@@ -272,13 +295,39 @@ video { display: block; width: 100%; }
         ctx.drawImage(video, 0, 0, scanW, scanH);
 
         try {
-          var imageData = ctx.getImageData(0, 0, scanW, scanH);
-          var qrData = jsQR(imageData.data, imageData.width, imageData.height);
+          var imageData, qrData, usedCrop = false;
+
+          // Crop scan: if region is known, only scan that area (much faster)
+          if (qrRegion) {
+            var regionW = Math.min(qrRegion.w, scanW - qrRegion.x);
+            var regionH = Math.min(qrRegion.h, scanH - qrRegion.y);
+            if (regionW > 0 && regionH > 0) {
+              imageData = ctx.getImageData(qrRegion.x, qrRegion.y, regionW, regionH);
+              qrData = jsQR(imageData.data, imageData.width, imageData.height);
+              usedCrop = true;
+            }
+          }
+
+          // Full scan fallback: no region yet, or crop scan missed
+          if (!qrData) {
+            if (usedCrop) cropMissCount++; else cropMissCount = 0;
+            if (cropMissCount >= 5) { qrRegion = null; cropMissCount = 0; }
+            imageData = ctx.getImageData(0, 0, scanW, scanH);
+            qrData = jsQR(imageData.data, imageData.width, imageData.height);
+          } else {
+            cropMissCount = 0;
+          }
           totalScanAttempts++;
 
         if (qrData && qrData.binaryData && qrData.binaryData.length > 0) {
           qrDetected++;
           qrWithData++;
+
+          // Lock QR region for crop scanning (screen mode only, first decode)
+          if (!qrRegion && screenMode && qrData.location) {
+            saveCropRegion(qrData.location, scanW, scanH);
+          }
+
           var frameBytes = new Uint8Array(qrData.binaryData);
 
           var result = Receiver.ingestFrameBinary(frameBytes);
