@@ -421,8 +421,8 @@ video { display: block; width: 100%; }
 
         lastScanDuration = Date.now() - scanStart;
 
-        // Update diagnostic every 15 scans
-        if (totalScanAttempts - lastDiagUpdate >= 15) {
+        // Update diagnostic every 5 scans
+        if (totalScanAttempts - lastDiagUpdate >= 5) {
           lastDiagUpdate = totalScanAttempts;
           var diagEl = document.getElementById('diagSection');
           var elapsedStr = '';
