@@ -97,7 +97,8 @@ input[type=file] { display: none; }
         <label>Mode</label>
         <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
           <button class="mode-btn" data-mode="camera">Camera</button>
-          <button class="mode-btn active" data-mode="screen">Screen</button>
+          <button class="mode-btn active" data-mode="screen">Screen-QR</button>
+          <button class="mode-btn" data-mode="rawgrid">RawGrid</button>
         </div>
       </div>
       <div class="setting-row">
@@ -186,6 +187,7 @@ input[type=file] { display: none; }
 <script src="lib/reed-solomon.js"></script>
 <script src="lib/frame-range.js"></script>
 <script src="lib/sha256.js"></script>
+<script src="lib/rawgrid.js"></script>
 <script src="lib/sender.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="lib/jsQR.js"></script>
@@ -247,8 +249,9 @@ input[type=file] { display: none; }
   var senderMode = 'screen';
 
   var modeDefaults = {
-    camera: { interval: 150, qrVersion: 10, fec: '5,1' },
-    screen: { interval: 80,  qrVersion: 15, fec: '7,3' }
+    camera:  { interval: 150, qrVersion: 10, fec: '5,1' },
+    screen:  { interval: 80,  qrVersion: 15, fec: '7,3' },
+    rawgrid: { interval: 50,  qrVersion: 0,  fec: '4,1' }
   };
 
   function applyModeDefaults(mode) {
@@ -257,6 +260,8 @@ input[type=file] { display: none; }
     document.getElementById('optInterval').value = String(d.interval);
     document.getElementById('optQRVersion').value = String(d.qrVersion);
     document.getElementById('optFEC').value = d.fec;
+    // Hide QR version selector in rawgrid mode (grid size is auto-computed)
+    document.getElementById('optQRVersion').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
   }
 
   applyModeDefaults('screen');
@@ -278,7 +283,8 @@ input[type=file] { display: none; }
       fecK: parseInt(fecParts[0]),
       fecN: parseInt(fecParts[1]),
       ecLevel: document.getElementById('optECLevel').value,
-      mode: senderMode
+      mode: senderMode,
+      cellPx: senderMode === 'rawgrid' ? 4 : 0
     };
   }
 
@@ -403,19 +409,25 @@ input[type=file] { display: none; }
 
     // Create QRCode renderer once, reuse via makeCode() for speed
     // Screen mode: grow QR with version so modules stay >=2px after 960px scan downscale
-    var modCount = 4 * (state.qrVersion || 10) + 17;  // modules per side: 4*V+17
-    var qrSize = senderMode === 'screen'
-      ? Math.max(480, Math.min(window.innerHeight - 40, Math.floor(modCount * 4)))
-      : Math.min(500, Math.floor(window.innerHeight * 0.65));
-    qrWrapper.innerHTML = '';
-    qrCode = new QRCode(qrWrapper, {
-      text: 'placeholder',
-      width: qrSize,
-      height: qrSize,
-      colorDark: '#000000',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
-    });
+    var qrSize;
+    if (senderMode === 'rawgrid') {
+      qrSize = Math.min(window.innerHeight - 40, 500);
+      qrWrapper.innerHTML = '';
+    } else {
+      var modCount = 4 * (state.qrVersion || 10) + 17;
+      qrSize = senderMode === 'screen'
+        ? Math.max(480, Math.min(window.innerHeight - 40, Math.floor(modCount * 4)))
+        : Math.min(500, Math.floor(window.innerHeight * 0.65));
+      qrWrapper.innerHTML = '';
+      qrCode = new QRCode(qrWrapper, {
+        text: 'placeholder',
+        width: qrSize,
+        height: qrSize,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel[state.ecLevel] || QRCode.CorrectLevel.M
+      });
+    }
 
     showFrame();
     if (timer) clearInterval(timer);
@@ -451,7 +463,14 @@ input[type=file] { display: none; }
         binary += String.fromCharCode(frame[i]);
       }
 
-      qrCode.makeCode(binary);
+      if (senderMode === 'rawgrid') {
+        var cellPx = 4;
+        var gridCanvas = RawGrid.render(frame, cellPx);
+        qrWrapper.innerHTML = '';
+        qrWrapper.appendChild(gridCanvas);
+      } else {
+        qrCode.makeCode(binary);
+      }
 
       // Self-test: decode QR from canvas using jsQR, verify roundtrip
       // Skip self-test on fast intervals (screen mode) to avoid blocking the timer

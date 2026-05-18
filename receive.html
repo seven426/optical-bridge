@@ -89,7 +89,8 @@ video { display: block; width: 100%; }
     </div>
     <div class="mode-selector" id="receiverMode" style="display:flex;gap:4px;background:#1a1a1a;border-radius:6px;padding:3px;margin-bottom:8px;border:1px solid #333;">
       <button class="mode-btn" data-mode="camera" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Camera</button>
-      <button class="mode-btn active" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">Screen Capture</button>
+      <button class="mode-btn active" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">Screen-QR</button>
+      <button class="mode-btn" data-mode="rawgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">RawGrid</button>
     </div>
     <button class="btn btn-primary" id="btnStart">Start Screen Capture</button>
   </div>
@@ -136,6 +137,7 @@ video { display: block; width: 100%; }
 <script src="lib/reed-solomon.js"></script>
 <script src="lib/frame-range.js"></script>
 <script src="lib/sha256.js"></script>
+<script src="lib/rawgrid.js"></script>
 <script src="lib/receiver.js"></script>
 <script src="lib/jsQR.js"></script>
 <script>
@@ -169,14 +171,15 @@ video { display: block; width: 100%; }
     e.target.style.background = '#555';
     e.target.style.color = '#e0e0e0';
     receiverMode = e.target.dataset.mode;
-    var label = receiverMode === 'screen' ? 'Start Screen Capture' : 'Start Camera';
+    var label = receiverMode === 'rawgrid' ? 'Start RawGrid' : receiverMode === 'screen' ? 'Start Screen Capture' : 'Start Camera';
     btnStart.textContent = label;
     // Show/hide reticle (only for camera mode)
-    document.querySelector('.reticle').style.display = receiverMode === 'screen' ? 'none' : '';
+    document.querySelector('.reticle').style.display = receiverMode === 'camera' ? '' : 'none';
   });
 
   btnStart.addEventListener('click', function() {
-    if (receiverMode === 'screen') startScreenCapture();
+    if (receiverMode === 'rawgrid') startScreenCapture();
+    else if (receiverMode === 'screen') startScreenCapture();
     else startCamera();
   });
 
@@ -327,6 +330,9 @@ video { display: block; width: 100%; }
               if (seenHashes[ph]) {
                 hashHits++;
                 qrData = null;  // duplicate pixel data, skip jsQR
+              } else if (receiverMode === 'rawgrid') {
+                var rawBytes = RawGrid.decode(imageData.data, imageData.width, imageData.height);
+                qrData = rawBytes ? { binaryData: rawBytes } : null;
               } else {
                 qrData = jsQR(imageData.data, imageData.width, imageData.height);
               }
@@ -341,7 +347,12 @@ video { display: block; width: 100%; }
             imageData = ctx.getImageData(0, 0, scanW, scanH);
             var fph = pixelHash(imageData.data);
             if (!seenHashes[fph]) {
-              qrData = jsQR(imageData.data, imageData.width, imageData.height);
+              if (receiverMode === 'rawgrid') {
+                var rb = RawGrid.decode(imageData.data, imageData.width, imageData.height);
+                qrData = rb ? { binaryData: rb } : null;
+              } else {
+                qrData = jsQR(imageData.data, imageData.width, imageData.height);
+              }
             } else {
               hashHits++;
               qrData = null;
