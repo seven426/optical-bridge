@@ -315,6 +315,7 @@ video { display: block; width: 100%; }
         if (canvas.width !== scanW || canvas.height !== scanH) {
           canvas.width = scanW;
           canvas.height = scanH;
+          ctx.imageSmoothingEnabled = false;  // reset after canvas resize clears context
         }
         ctx.drawImage(video, 0, 0, scanW, scanH);
 
