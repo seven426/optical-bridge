@@ -246,6 +246,18 @@ video { display: block; width: 100%; }
     var lastScanDuration = 0;
     var qrRegion = null;       // {x,y,w,h} crop region in scan coords, set after first decode
     var cropMissCount = 0;     // consecutive crop failures, reset region after several
+    var seenHashes = {};       // pixel hash -> true, to skip duplicate jsQR decodes
+    var hashHits = 0;          // count of jsQR skips due to hash match
+
+    function pixelHash(data) {
+      // Lightweight hash: sample first 128 pixels + total length
+      var h = data.length;
+      var n = Math.min(512, data.length);
+      for (var i = 0; i < n; i += 4) {
+        h = ((h << 5) - h + data[i]) | 0;
+      }
+      return h;
+    }
 
     function saveCropRegion(loc, imgW, imgH) {
       // Compute bounding box from QR corner points, add 15% padding
@@ -303,7 +315,13 @@ video { display: block; width: 100%; }
             var regionH = Math.min(qrRegion.h, scanH - qrRegion.y);
             if (regionW > 0 && regionH > 0) {
               imageData = ctx.getImageData(qrRegion.x, qrRegion.y, regionW, regionH);
-              qrData = jsQR(imageData.data, imageData.width, imageData.height);
+              var ph = pixelHash(imageData.data);
+              if (seenHashes[ph]) {
+                hashHits++;
+                qrData = null;  // duplicate pixel data, skip jsQR
+              } else {
+                qrData = jsQR(imageData.data, imageData.width, imageData.height);
+              }
               usedCrop = true;
             }
           }
@@ -313,9 +331,17 @@ video { display: block; width: 100%; }
             if (usedCrop) cropMissCount++; else cropMissCount = 0;
             if (cropMissCount >= 5) { qrRegion = null; cropMissCount = 0; }
             imageData = ctx.getImageData(0, 0, scanW, scanH);
-            qrData = jsQR(imageData.data, imageData.width, imageData.height);
+            var fph = pixelHash(imageData.data);
+            if (!seenHashes[fph]) {
+              qrData = jsQR(imageData.data, imageData.width, imageData.height);
+            } else {
+              hashHits++;
+              qrData = null;
+            }
           } else {
             cropMissCount = 0;
+            // Cache pixel hash to skip jsQR on duplicate frames
+            if (imageData) seenHashes[pixelHash(imageData.data)] = true;
           }
           totalScanAttempts++;
 
@@ -370,6 +396,7 @@ video { display: block; width: 100%; }
           }
           var lastMs = lastScanDuration ? lastScanDuration + 'ms' : '?';
           diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
+            ' | skip:' + hashHits +
             ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH +
             ' dur:' + lastMs + elapsedStr;
         }
