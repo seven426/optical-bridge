@@ -104,6 +104,8 @@ video { display: block; width: 100%; }
 
   <div id="diagSection" style="display:none;margin-top:8px;padding:6px 10px;background:#1a1a1a;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:center;"></div>
 
+  <div id="rgStatus" style="display:none;margin-top:8px;padding:6px 10px;background:#1a1a1a;border-radius:6px;font-family:monospace;font-size:11px;color:#ff9800;text-align:center;"></div>
+
   <div class="heatmap-container" id="heatmapSection" style="display:none;">
     <h3>Frame Map (green=data, blue=parity, red=missing)</h3>
     <div class="heatmap" id="heatmap"></div>
@@ -191,6 +193,7 @@ video { display: block; width: 100%; }
       video.srcObject = stream;
       btnStart.style.display = 'none';
       document.getElementById('statsSection').style.display = 'grid';
+      document.getElementById('rgStatus').style.display = 'block';
       document.getElementById('heatmapSection').style.display = 'block';
       document.getElementById('recentSection').style.display = 'block';
       document.getElementById('missingSection').style.display = 'block';
@@ -214,6 +217,7 @@ video { display: block; width: 100%; }
       video.srcObject = stream;
       btnStart.style.display = 'none';
       document.getElementById('statsSection').style.display = 'grid';
+      document.getElementById('rgStatus').style.display = 'block';
       document.getElementById('heatmapSection').style.display = 'block';
       document.getElementById('recentSection').style.display = 'block';
       document.getElementById('missingSection').style.display = 'block';
@@ -226,6 +230,7 @@ video { display: block; width: 100%; }
         video.srcObject = null;
         btnStart.style.display = 'block';
         document.getElementById('statsSection').style.display = 'none';
+        document.getElementById('rgStatus').style.display = 'none';
         document.getElementById('heatmapSection').style.display = 'none';
         document.getElementById('recentSection').style.display = 'none';
         document.getElementById('missingSection').style.display = 'none';
@@ -415,11 +420,26 @@ video { display: block; width: 100%; }
           }
           // Store for diagnostic display
           window._lastIngest = { status: ingestResult, len: frameBytes.length, mode: receiverMode };
+          // Update rawgrid status immediately
+          if (receiverMode === 'rawgrid') {
+            var rgEl = document.getElementById('rgStatus');
+            rgEl.textContent = 'RawGrid: decoded ' + frameBytes.length + 'B | ingest: ' + ingestResult;
+            rgEl.style.color = ingestResult === 'new' ? '#4caf50' : ingestResult === 'bad' ? '#f44336' : '#ff9800';
+          }
         } else if (qrData) {
           qrDetected++;
         }
 
         lastScanDuration = Date.now() - scanStart;
+
+        // Update rawgrid status when no data was decoded
+        if (receiverMode === 'rawgrid' && (!qrData || !qrData.binaryData || qrData.binaryData.length === 0)) {
+          var rgEl = document.getElementById('rgStatus');
+          if (totalScanAttempts % 3 === 0) {  // every 3rd scan
+            rgEl.textContent = 'RawGrid: scan ' + totalScanAttempts + ' | no decode (locateGrid failed?)';
+            rgEl.style.color = '#888';
+          }
+        }
 
         // Update diagnostic every 5 scans
         if (totalScanAttempts - lastDiagUpdate >= 5) {
