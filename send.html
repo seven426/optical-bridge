@@ -96,8 +96,8 @@ input[type=file] { display: none; }
       <div class="setting-row">
         <label>Mode</label>
         <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
-          <button class="mode-btn active" data-mode="camera">Camera</button>
-          <button class="mode-btn" data-mode="screen">Screen</button>
+          <button class="mode-btn" data-mode="camera">Camera</button>
+          <button class="mode-btn active" data-mode="screen">Screen</button>
         </div>
       </div>
       <div class="setting-row">
@@ -240,7 +240,7 @@ input[type=file] { display: none; }
 
   settingsToggle.addEventListener('click', function() { settingsBody.classList.toggle('open'); });
 
-  var senderMode = 'camera';
+  var senderMode = 'screen';
 
   var modeDefaults = {
     camera: { interval: 150, qrVersion: 10, fec: '5,1' },
@@ -254,6 +254,8 @@ input[type=file] { display: none; }
     document.getElementById('optQRVersion').value = String(d.qrVersion);
     document.getElementById('optFEC').value = d.fec;
   }
+
+  applyModeDefaults('screen');
 
   document.getElementById('senderMode').addEventListener('click', function(e) {
     if (!e.target.classList.contains('mode-btn')) return;
