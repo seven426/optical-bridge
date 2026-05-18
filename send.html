@@ -121,7 +121,6 @@ input[type=file] { display: none; }
           <option value="10" selected>V10 (57x57, ~270B)</option>
           <option value="12">V12 (65x65, ~400B)</option>
           <option value="15">V15 (73x73, ~640B)</option>
-          <option value="16">V16 (81x81, ~580B)</option>
           <option value="18">V18 (89x89, ~710B)</option>
           <option value="20">V20 (97x97, ~850B)</option>
           <option value="23">V23 (109x109, ~1090B)</option>
@@ -244,8 +243,8 @@ input[type=file] { display: none; }
   var senderMode = 'camera';
 
   var modeDefaults = {
-    camera: { interval: 150, qrVersion: 10 },
-    screen: { interval: 50,  qrVersion: 20 }
+    camera: { interval: 150, qrVersion: 10, fec: '5,1' },
+    screen: { interval: 80,  qrVersion: 15, fec: '7,3' }
   };
 
   function applyModeDefaults(mode) {
@@ -253,6 +252,7 @@ input[type=file] { display: none; }
     var d = modeDefaults[mode];
     document.getElementById('optInterval').value = String(d.interval);
     document.getElementById('optQRVersion').value = String(d.qrVersion);
+    document.getElementById('optFEC').value = d.fec;
   }
 
   document.getElementById('senderMode').addEventListener('click', function(e) {
