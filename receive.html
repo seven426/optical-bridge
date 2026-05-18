@@ -262,10 +262,11 @@ video { display: block; width: 100%; }
     var hashHits = 0;          // count of jsQR skips due to hash match
 
     function pixelHash(data) {
-      // Lightweight hash: sample first 128 pixels + total length
+      // Sample from middle and scattered positions — avoids false matches
+      // when top-left corner is static across frames
       var h = data.length;
-      var n = Math.min(512, data.length);
-      for (var i = 0; i < n; i += 4) {
+      var step = Math.max(1, Math.floor(data.length / 256));
+      for (var i = 0; i < data.length; i += step) {
         h = ((h << 5) - h + data[i]) | 0;
       }
       return h;
