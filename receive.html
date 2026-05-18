@@ -395,10 +395,10 @@ video { display: block; width: 100%; }
 
           var result = Receiver.ingestFrameBinary(frameBytes);
 
+          var ingestResult = result.status;
           if (result.status === 'new') {
             handleResult(result);
           } else if (result.status === 'processing') {
-            // All blocks ready, verifying SHA-256...
             updateUI();
             showProcessing();
             var promise = Receiver.getProcessingPromise();
@@ -413,9 +413,10 @@ video { display: block; width: 100%; }
           } else if (result.status === 'bad') {
             flashIndicator('fail');
           }
+          // Store for diagnostic display
+          window._lastIngest = { status: ingestResult, len: frameBytes.length, mode: receiverMode };
         } else if (qrData) {
           qrDetected++;
-          // jsQR found a QR but no binaryData
         }
 
         lastScanDuration = Date.now() - scanStart;
@@ -432,8 +433,12 @@ video { display: block; width: 100%; }
             elapsedStr = ' | elapsed:' + mins + 'm' + remainSecs + 's';
           }
           var lastMs = lastScanDuration ? lastScanDuration + 'ms' : '?';
+          var ingestInfo = '';
+          if (window._lastIngest) {
+            ingestInfo = ' | ingest:' + window._lastIngest.status + ' len:' + window._lastIngest.len;
+          }
           diagEl.textContent = 'Scans:' + totalScanAttempts + ' | QR found:' + qrDetected + ' | data:' + qrWithData +
-            ' | skip:' + hashHits +
+            ' | skip:' + hashHits + ingestInfo +
             ' | video:' + video.videoWidth + 'x' + video.videoHeight + ' scan:' + scanW + 'x' + scanH +
             ' dur:' + lastMs + elapsedStr;
         }
