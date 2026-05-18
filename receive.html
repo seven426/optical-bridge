@@ -368,9 +368,24 @@ video { display: block; width: 100%; }
           qrDetected++;
           qrWithData++;
 
-          // Lock QR region for crop scanning (screen mode only, first decode)
-          if (!qrRegion && screenMode && qrData.location) {
-            saveCropRegion(qrData.location, scanW, scanH);
+          // Lock crop region for subsequent scans
+          if (!qrRegion && screenMode) {
+            if (qrData.location) {
+              saveCropRegion(qrData.location, scanW, scanH);
+            } else if (receiverMode === 'rawgrid') {
+              // RawGrid: locate grid to set crop region for subsequent scans
+              var gridLoc = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
+              if (gridLoc) {
+                var estGridPx = gridLoc.cellPx * 130; // generous estimate for grid size
+                var pad = Math.max(gridLoc.cellPx * 4, 15);
+                qrRegion = {
+                  x: Math.max(0, gridLoc.x - pad),
+                  y: Math.max(0, gridLoc.y - pad),
+                  w: Math.min(scanW - gridLoc.x + pad, estGridPx + pad * 2),
+                  h: Math.min(scanH - gridLoc.y + pad, estGridPx + pad * 2)
+                };
+              }
+            }
           }
 
           var frameBytes = new Uint8Array(qrData.binaryData);
