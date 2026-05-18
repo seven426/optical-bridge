@@ -253,8 +253,8 @@ video { display: block; width: 100%; }
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = false;  // nearest-neighbor: preserves sharp cell edges after downscale
-    var SCAN_INTERVAL_MS = screenMode ? 50 : 150;  // time-based throttle, independent of jsQR speed
-    var MAX_SCAN_DIM = screenMode ? 960 : 640;
+    var SCAN_INTERVAL_MS = screenMode ? 50 : 150;
+    var MAX_SCAN_DIM = receiverMode === 'rawgrid' ? 1280 : screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
     var qrWithData = 0;
