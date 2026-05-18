@@ -157,10 +157,13 @@ input[type=file] { display: none; }
 <div id="stage3" class="stage">
   <div class="mode-selector" id="modeSelector">
     <button class="mode-btn active" data-mode="all">All frames</button>
-    <button class="mode-btn" data-mode="select">Select frames</button>
-  </div>
+    <button class="mode-btn" data-mode="select">Frames</button>
+      <button class="mode-btn" data-mode="blocks">Blocks</button>
+    </div>
   <input class="select-input" id="selectInput" placeholder="Frame range: 42,87,120-125" style="display:none;">
   <div class="select-info" id="selectInfo" style="display:none;"></div>
+  <input class="select-input" id="blockInput" placeholder="Block range: 0,3-5" style="display:none;">
+  <div class="select-info" id="blockInfo" style="display:none;"></div>
   <div class="qr-container">
     <div id="shaDisplay" style="font-size:10px;word-break:break-all;color:#888;text-align:center;margin-bottom:4px;font-family:monospace;"></div>
     <div class="qr-wrapper" id="qrWrapper"></div>
@@ -203,6 +206,8 @@ input[type=file] { display: none; }
   var settingsBody = document.getElementById('settingsBody');
   var selectInput = document.getElementById('selectInput');
   var selectInfo = document.getElementById('selectInfo');
+  var blockInput = document.getElementById('blockInput');
+  var blockInfo = document.getElementById('blockInfo');
   var modeSelector = document.getElementById('modeSelector');
 
   var timer = null;
@@ -312,10 +317,20 @@ input[type=file] { display: none; }
     if (mode === 'select') {
       selectInput.style.display = 'block';
       selectInfo.style.display = 'block';
+      blockInput.style.display = 'none';
+      blockInfo.style.display = 'none';
       Sender.setSelectMode(new Set());
+    } else if (mode === 'blocks') {
+      selectInput.style.display = 'none';
+      selectInfo.style.display = 'none';
+      blockInput.style.display = 'block';
+      blockInfo.style.display = 'block';
+      Sender.setBlockMode(new Set());
     } else {
       selectInput.style.display = 'none';
       selectInfo.style.display = 'none';
+      blockInput.style.display = 'none';
+      blockInfo.style.display = 'none';
       Sender.setAllMode();
     }
     cycleFrames = Sender.getCycleFrames();
@@ -330,6 +345,17 @@ input[type=file] { display: none; }
     cycleFrames = Sender.getCycleFrames();
     cycleFrameIdx = 0;
     selectInfo.textContent = selSet.size + ' frames selected';
+  });
+
+  blockInput.addEventListener('input', function() {
+    var state = Sender.getState();
+    var fecK = state ? state.fecK : 0;
+    var totalBlocks = state ? state.totalFECBlocks : 0;
+    var blkSet = FrameRange.parse(blockInput.value, totalBlocks);
+    Sender.setBlockMode(blkSet);
+    cycleFrames = Sender.getCycleFrames();
+    cycleFrameIdx = 0;
+    blockInfo.textContent = blkSet.size + ' blocks selected';
   });
 
   function startTransmission() {

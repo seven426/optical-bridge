@@ -118,6 +118,11 @@ video { display: block; width: 100%; }
     <div class="missing-frames" id="missingFrames"></div>
   </div>
 
+  <div class="missing-section" id="missingBlocksSection" style="display:none;">
+    <h3>Missing Blocks (copy to tell sender)</h3>
+    <div class="missing-frames" id="missingBlocks" style="color:#ff9800;"></div>
+  </div>
+
   <div class="download-section" id="downloadSection">
     <div class="status" id="downloadStatus"></div>
     <div id="sha256Display" style="font-size:10px;word-break:break-all;color:#888;margin:8px 0;display:none;"></div>
@@ -186,6 +191,7 @@ video { display: block; width: 100%; }
       document.getElementById('heatmapSection').style.display = 'block';
       document.getElementById('recentSection').style.display = 'block';
       document.getElementById('missingSection').style.display = 'block';
+      document.getElementById('missingBlocksSection').style.display = 'block';
       document.getElementById('diagSection').style.display = 'block';
 
       firstFrameTime = null;
@@ -208,6 +214,7 @@ video { display: block; width: 100%; }
       document.getElementById('heatmapSection').style.display = 'block';
       document.getElementById('recentSection').style.display = 'block';
       document.getElementById('missingSection').style.display = 'block';
+      document.getElementById('missingBlocksSection').style.display = 'block';
       document.getElementById('diagSection').style.display = 'block';
 
       // Handle user stopping screen share
@@ -219,6 +226,7 @@ video { display: block; width: 100%; }
         document.getElementById('heatmapSection').style.display = 'none';
         document.getElementById('recentSection').style.display = 'none';
         document.getElementById('missingSection').style.display = 'none';
+        document.getElementById('missingBlocksSection').style.display = 'none';
         document.getElementById('diagSection').style.display = 'none';
         document.getElementById('downloadSection').classList.remove('show');
       });
@@ -477,6 +485,9 @@ video { display: block; width: 100%; }
     document.getElementById('statMissing').textContent = missing.size;
     missingFramesEl.textContent = FrameRange.format(missing) || '(none)';
 
+    var missingBlocks = Receiver.getMissingBlocks();
+    document.getElementById('missingBlocks').textContent = FrameRange.format(missingBlocks) || '(none)';
+
     // Heatmap - include parity frames (throttled)
     if (updateHeatmap) {
       var totalDisplay = stats.expectedWithParity || stats.expected;
@@ -494,6 +505,7 @@ video { display: block; width: 100%; }
 
     if (stats.complete) {
       document.getElementById('missingSection').style.display = 'none';
+      document.getElementById('missingBlocksSection').style.display = 'none';
     }
   }
 
