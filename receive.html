@@ -254,7 +254,7 @@ video { display: block; width: 100%; }
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = false;  // nearest-neighbor: preserves sharp cell edges after downscale
     var SCAN_INTERVAL_MS = screenMode ? 50 : 150;
-    var MAX_SCAN_DIM = receiverMode === 'rawgrid' ? 1280 : screenMode ? 960 : 640;
+    var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
     var qrWithData = 0;
@@ -435,8 +435,25 @@ video { display: block; width: 100%; }
         // Update rawgrid status when no data was decoded
         if (receiverMode === 'rawgrid' && (!qrData || !qrData.binaryData || qrData.binaryData.length === 0)) {
           var rgEl = document.getElementById('rgStatus');
-          if (totalScanAttempts % 3 === 0) {  // every 3rd scan
-            rgEl.textContent = 'RawGrid: scan ' + totalScanAttempts + ' | no decode (locateGrid failed?)';
+          if (totalScanAttempts % 3 === 0) {
+            // Try locateGrid directly to see what's happening
+            var testGrids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
+            var info = 'scan ' + totalScanAttempts + ' | locateGrid: ';
+            if (testGrids && testGrids.length > 0) {
+              info += testGrids.length + ' grids, best: cp=' + testGrids[0].cellPx + ' gs=' + testGrids[0].gridSize + ' @(' + testGrids[0].x + ',' + testGrids[0].y + ')';
+              // Try decode with best grid
+              var testDec = RawGrid.decode(imageData.data, imageData.width, imageData.height);
+              if (testDec) {
+                var ddv = new DataView(testDec.buffer, testDec.byteOffset, testDec.byteLength);
+                info += ' | decoded ' + testDec.length + 'B magic=' + ddv.getUint16(0,false).toString(16) + ' fk=' + ddv.getUint16(14,false);
+              } else {
+                info += ' | decode: null';
+              }
+            } else {
+              info += '0 (no candidates found)';
+            }
+            info += ' | img:' + imageData.width + 'x' + Math.floor(imageData.data.length/4/imageData.width);
+            rgEl.textContent = info;
             rgEl.style.color = '#888';
           }
         }
