@@ -439,11 +439,12 @@ video { display: block; width: 100%; }
           var testGrids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
           var info = 'scan ' + totalScanAttempts + ' | grids: ';
           if (testGrids && testGrids.length > 0) {
-            info += testGrids.length + ' best: cp=' + testGrids[0].cellPx + ' gs=' + testGrids[0].gridSize;
+            var best = testGrids[0];
+            info += testGrids.length + ' cp=' + best.cellPx + ' gs=' + best.gridSize + ' @' + best.x + ',' + best.y;
             var testDec = RawGrid.decode(imageData.data, imageData.width, imageData.height);
             if (testDec) {
               var ddv = new DataView(testDec.buffer, testDec.byteOffset, testDec.byteLength);
-              info += ' dec:' + testDec.length + 'B m=' + ddv.getUint16(0,false).toString(16);
+              info += ' dec:' + testDec.length + 'B m=' + ddv.getUint16(0,false).toString(16) + ' fk=' + ddv.getUint16(14,false);
             } else { info += ' dec:null'; }
           } else { info += '0'; }
           info += ' img:' + imageData.width + 'x' + Math.floor(imageData.data.length/4/imageData.width);
