@@ -432,30 +432,23 @@ video { display: block; width: 100%; }
 
         lastScanDuration = Date.now() - scanStart;
 
-        // Update rawgrid status when no data was decoded
+        // Update rawgrid status every scan
         if (receiverMode === 'rawgrid' && (!qrData || !qrData.binaryData || qrData.binaryData.length === 0)) {
           var rgEl = document.getElementById('rgStatus');
-          if (totalScanAttempts % 3 === 0) {
-            // Try locateGrid directly to see what's happening
-            var testGrids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
-            var info = 'scan ' + totalScanAttempts + ' | locateGrid: ';
-            if (testGrids && testGrids.length > 0) {
-              info += testGrids.length + ' grids, best: cp=' + testGrids[0].cellPx + ' gs=' + testGrids[0].gridSize + ' @(' + testGrids[0].x + ',' + testGrids[0].y + ')';
-              // Try decode with best grid
-              var testDec = RawGrid.decode(imageData.data, imageData.width, imageData.height);
-              if (testDec) {
-                var ddv = new DataView(testDec.buffer, testDec.byteOffset, testDec.byteLength);
-                info += ' | decoded ' + testDec.length + 'B magic=' + ddv.getUint16(0,false).toString(16) + ' fk=' + ddv.getUint16(14,false);
-              } else {
-                info += ' | decode: null';
-              }
-            } else {
-              info += '0 (no candidates found)';
-            }
-            info += ' | img:' + imageData.width + 'x' + Math.floor(imageData.data.length/4/imageData.width);
-            rgEl.textContent = info;
-            rgEl.style.color = '#888';
-          }
+          // Try locateGrid directly
+          var testGrids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
+          var info = 'scan ' + totalScanAttempts + ' | grids: ';
+          if (testGrids && testGrids.length > 0) {
+            info += testGrids.length + ' best: cp=' + testGrids[0].cellPx + ' gs=' + testGrids[0].gridSize;
+            var testDec = RawGrid.decode(imageData.data, imageData.width, imageData.height);
+            if (testDec) {
+              var ddv = new DataView(testDec.buffer, testDec.byteOffset, testDec.byteLength);
+              info += ' dec:' + testDec.length + 'B m=' + ddv.getUint16(0,false).toString(16);
+            } else { info += ' dec:null'; }
+          } else { info += '0'; }
+          info += ' img:' + imageData.width + 'x' + Math.floor(imageData.data.length/4/imageData.width);
+          rgEl.textContent = info;
+          rgEl.style.color = testGrids && testGrids.length > 0 ? '#ff9800' : '#888';
         }
 
         // Update diagnostic every 5 scans
