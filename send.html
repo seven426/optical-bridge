@@ -99,6 +99,7 @@ input[type=file] { display: none; }
           <button class="mode-btn" data-mode="camera">Camera</button>
           <button class="mode-btn" data-mode="screen">Screen-QR</button>
           <button class="mode-btn active" data-mode="rawgrid">RawGrid</button>
+          <button class="mode-btn" data-mode="colorgrid">ColorGrid</button>
         </div>
       </div>
       <div class="setting-row">
@@ -191,6 +192,7 @@ input[type=file] { display: none; }
 <script src="lib/frame-range.js"></script>
 <script src="lib/sha256.js"></script>
 <script src="lib/rawgrid.js"></script>
+<script src="lib/colorgrid.js"></script>
 <script src="lib/sender.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="lib/jsQR.js"></script>
@@ -257,7 +259,8 @@ input[type=file] { display: none; }
   var modeDefaults = {
     camera:  { interval: 150, qrVersion: 10, fec: '5,1' },
     screen:  { interval: 80,  qrVersion: 15, fec: '7,3' },
-    rawgrid: { interval: 33,  qrVersion: 0,  fec: '4,1' }
+    rawgrid:   { interval: 33,  qrVersion: 0,  fec: '4,1' },
+    colorgrid: { interval: 33,  qrVersion: 0,  fec: '4,1' }
   };
 
   function applyModeDefaults(mode) {
@@ -267,7 +270,9 @@ input[type=file] { display: none; }
     document.getElementById('optQRVersion').value = String(d.qrVersion);
     document.getElementById('optFEC').value = d.fec;
     // Hide QR version and EC level selectors in rawgrid mode
-    document.getElementById('optQRVersion').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
+    var isGridMode = mode === 'rawgrid' || mode === 'colorgrid';
+    document.getElementById('optQRVersion').parentNode.style.display = isGridMode ? 'none' : '';
+    document.getElementById('optECLevel').parentNode.style.display = isGridMode ? 'none' : '';
     document.getElementById('optECLevel').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
   }
 
@@ -291,7 +296,7 @@ input[type=file] { display: none; }
       fecN: parseInt(fecParts[1]),
       ecLevel: document.getElementById('optECLevel').value,
       mode: senderMode,
-      cellPx: senderMode === 'rawgrid' ? 6 : 0
+      cellPx: (senderMode === 'rawgrid' || senderMode === 'colorgrid') ? 6 : 0
     };
   }
 
@@ -420,7 +425,7 @@ input[type=file] { display: none; }
     // Create QRCode renderer once, reuse via makeCode() for speed
     // Screen mode: grow QR with version so modules stay >=2px after 960px scan downscale
     var qrSize;
-    if (senderMode === 'rawgrid') {
+    if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
       qrSize = Math.min(window.innerHeight - 40, 500);
       qrWrapper.innerHTML = '';
     } else {
@@ -473,9 +478,9 @@ input[type=file] { display: none; }
         binary += String.fromCharCode(frame[i]);
       }
 
-      if (senderMode === 'rawgrid') {
+      if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
         var cellPx = state.cellPx || 6;
-        var gridCanvas = RawGrid.render(frame, cellPx);
+        var gridCanvas = senderMode === 'colorgrid' ? ColorGrid.render(frame, cellPx) : RawGrid.render(frame, cellPx);
         qrWrapper.innerHTML = '';
         qrWrapper.appendChild(gridCanvas);
       } else {
@@ -491,7 +496,7 @@ input[type=file] { display: none; }
       }
       if (selfTestEnabled) {
         if (!selfTestSkipCount) {
-          selfTestSkipCount = (activeInterval < 80) ? 60 : (senderMode === 'rawgrid' ? 1 : 1);
+          selfTestSkipCount = (activeInterval < 80) ? 60 : ((senderMode === 'rawgrid' || senderMode === 'colorgrid') ? 1 : 1);
         }
         selfTestTick++;
         if (selfTestTick >= selfTestSkipCount) {
@@ -504,9 +509,9 @@ input[type=file] { display: none; }
             var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
             var recovered = null;
             var rgDebug = null;
-            if (senderMode === 'rawgrid') {
-              recovered = RawGrid.decode(imgData.data, imgData.width, imgData.height);
-              rgDebug = RawGrid.getLastDebug();
+            if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
+              recovered = senderMode === 'colorgrid' ? ColorGrid.decode(imgData.data, imgData.width, imgData.height) : RawGrid.decode(imgData.data, imgData.width, imgData.height);
+              rgDebug = senderMode === 'colorgrid' ? ColorGrid.getLastDebug() : RawGrid.getLastDebug();
             } else {
               var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
               if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
@@ -521,7 +526,7 @@ input[type=file] { display: none; }
               for (var bi = 0; bi < frame.length && match; bi++) {
                 if (frame[bi] !== recovered[bi]) match = false;
               }
-              if (senderMode === 'rawgrid') {
+              if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
                 if (match) {
                   selfTestOk++;
                 } else {
@@ -562,7 +567,7 @@ input[type=file] { display: none; }
                   }
                 }
               }
-            } else if (senderMode === 'rawgrid') {
+            } else if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
               // Decode returned null — accumulate failure
               selfTestFail++;
               var hexHead = '', hexTail = '';
