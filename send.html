@@ -520,8 +520,16 @@ input[type=file] { display: none; }
                 if (rgDebug) {
                   if (rgDebug.error && !rgDebug.bestPair) {
                     lines.push('Locate: FAIL - ' + rgDebug.error);
-                    lines.push('RawCandidates=' + rgDebug.rawCandidates + ' Crossed=' + rgDebug.crossedCandidates + ' Top=' + rgDebug.topCount);
                   }
+                  var rawList = (rgDebug.rawCoords || []).slice(0, 15).join(' ');
+                  lines.push('Raw[' + rgDebug.rawCandidates + ']: ' + (rawList || '(none)'));
+                  if (rgDebug.crossedCoords && rgDebug.crossedCoords.length > 0) {
+                    var crossedList = rgDebug.crossedCoords.join(' ');
+                    lines.push('Crossed[' + rgDebug.crossedCandidates + ']: ' + crossedList);
+                  } else {
+                    lines.push('Crossed[' + rgDebug.crossedCandidates + ']: (none)');
+                  }
+                  lines.push('Top=' + rgDebug.topCount);
                   if (rgDebug.bestPair) {
                     lines.push('TL: (' + rgDebug.bestPair.tlCx.toFixed(1) + ',' + rgDebug.bestPair.tlCy.toFixed(1) + ') ms=' + rgDebug.bestPair.tlMs.toFixed(2));
                     lines.push('BR: (' + rgDebug.bestPair.brCx.toFixed(1) + ',' + rgDebug.bestPair.brCy.toFixed(1) + ') ms=' + rgDebug.bestPair.brMs.toFixed(2));
@@ -565,7 +573,14 @@ input[type=file] { display: none; }
               var lines = [];
               lines.push('Enc: ' + hexHead + '...' + hexTail + ' (' + frame.length + 'B)');
               if (rgDebug) {
-                lines.push('RawCandidates=' + rgDebug.rawCandidates + ' Crossed=' + rgDebug.crossedCandidates + ' Top=' + rgDebug.topCount);
+                var rawList = (rgDebug.rawCoords || []).slice(0, 15).join(' ');
+                lines.push('Raw[' + rgDebug.rawCandidates + ']: ' + (rawList || '(none)'));
+                if (rgDebug.crossedCoords && rgDebug.crossedCoords.length > 0) {
+                  lines.push('Crossed[' + rgDebug.crossedCandidates + ']: ' + rgDebug.crossedCoords.join(' '));
+                } else {
+                  lines.push('Crossed[' + rgDebug.crossedCandidates + ']: (none)');
+                }
+                lines.push('Top=' + rgDebug.topCount);
                 if (rgDebug.bestPair) {
                   lines.push('TL: (' + rgDebug.bestPair.tlCx.toFixed(1) + ',' + rgDebug.bestPair.tlCy.toFixed(1) + ') ms=' + rgDebug.bestPair.tlMs.toFixed(2));
                   lines.push('BR: (' + rgDebug.bestPair.brCx.toFixed(1) + ',' + rgDebug.bestPair.brCy.toFixed(1) + ') ms=' + rgDebug.bestPair.brMs.toFixed(2));
