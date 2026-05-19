@@ -382,15 +382,17 @@ video { display: block; width: 100%; }
               saveCropRegion(qrData.location, scanW, scanH);
             } else if (receiverMode === 'rawgrid') {
               // RawGrid: locate grid to set crop region for subsequent scans
-              var gridLoc = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
-              if (gridLoc) {
-                var estGridPx = gridLoc.cellPx * 130; // generous estimate for grid size
-                var pad = Math.max(gridLoc.cellPx * 4, 15);
+              var grids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
+              if (grids && grids.length > 0) {
+                var gridLoc = grids[0];
+                var estW = Math.ceil(gridLoc.msX * gridLoc.gridSize);
+                var estH = Math.ceil(gridLoc.msY * gridLoc.gridSize);
+                var pad = Math.max(Math.round(gridLoc.msX * 3), 15);
                 qrRegion = {
-                  x: Math.max(0, gridLoc.x - pad),
-                  y: Math.max(0, gridLoc.y - pad),
-                  w: Math.min(scanW - gridLoc.x + pad, estGridPx + pad * 2),
-                  h: Math.min(scanH - gridLoc.y + pad, estGridPx + pad * 2)
+                  x: Math.max(0, Math.floor(gridLoc.originX - pad)),
+                  y: Math.max(0, Math.floor(gridLoc.originY - pad)),
+                  w: Math.min(scanW, estW + pad * 2),
+                  h: Math.min(scanH, estH + pad * 2)
                 };
               }
             }
@@ -440,7 +442,7 @@ video { display: block; width: 100%; }
           var info = 'scan ' + totalScanAttempts + ' | grids: ';
           if (testGrids && testGrids.length > 0) {
             var best = testGrids[0];
-            info += testGrids.length + ' cp=' + best.cellPx + ' gs=' + best.gridSize + ' @' + best.x + ',' + best.y;
+            info += testGrids.length + ' cp=' + best.cellPx + ' gs=' + best.gridSize + ' @' + Math.round(best.originX) + ',' + Math.round(best.originY);
             var testDec = RawGrid.decode(imageData.data, imageData.width, imageData.height);
             if (testDec) {
               var ddv = new DataView(testDec.buffer, testDec.byteOffset, testDec.byteLength);
