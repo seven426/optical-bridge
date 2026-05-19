@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RawGrid Self-Test</title>
+<style>
+body { font-family: monospace; max-width: 700px; margin: 20px auto; background: #111; color: #eee; }
+.pass { color: #4caf50; } .fail { color: #f44336; } .info { color: #888; }
+.result { margin: 4px 0; padding: 4px 8px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>RawGrid Encode/Decode Self-Test</h1>
+<div id="results"></div>
+
+<script src="../lib/frame-protocol.js"></script>
+<script src="../lib/rawgrid.js"></script>
+<script>
+var results = document.getElementById('results');
+var passed = 0, failed = 0;
+
+function assert(cond, name) {
+  var el = document.createElement('div');
+  el.className = 'result';
+  if (cond) { passed++; el.innerHTML = '<span class="pass">PASS</span> ' + name; }
+  else { failed++; el.innerHTML = '<span class="fail">FAIL</span> ' + name; }
+  results.appendChild(el);
+}
+
+function info(msg) {
+  var el = document.createElement('div');
+  el.className = 'result';
+  el.innerHTML = '<span class="info">INFO</span> ' + msg;
+  results.appendChild(el);
+}
+
+function arraysEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+// Render and decode via canvas pixels
+function renderDecode(frame, cellPx) {
+  var gridCanvas = RawGrid.render(frame, cellPx);
+  var ctx = gridCanvas.getContext('2d');
+  var imgData = ctx.getImageData(0, 0, gridCanvas.width, gridCanvas.height);
+  return RawGrid.decode(imgData.data, imgData.width, imgData.height);
+}
+
+// Simulate screen capture + downscale
+function simulateCapture(frame, cellPx, captureW, captureH, scanMaxDim) {
+  // Render grid
+  var gridCanvas = RawGrid.render(frame, cellPx);
+
+  // Place it in a simulated "screen capture" of captureW x captureH
+  var capCanvas = document.createElement('canvas');
+  capCanvas.width = captureW;
+  capCanvas.height = captureH;
+  var capCtx = capCanvas.getContext('2d');
+  capCtx.fillStyle = '#cccccc';
+  capCtx.fillRect(0, 0, captureW, captureH);
+  // Center the grid in the capture (as it would appear in a window)
+  var gridX = Math.floor((captureW - gridCanvas.width) / 2);
+  var gridY = Math.floor((captureH - gridCanvas.height) / 2);
+  capCtx.drawImage(gridCanvas, gridX, gridY);
+
+  // Downscale to scan resolution
+  var scaleX = Math.min(1, scanMaxDim / captureW);
+  var scaleY = Math.min(1, scanMaxDim / captureH);
+  var scale = Math.min(scaleX, scaleY);
+  var scanW = Math.floor(captureW * scale);
+  var scanH = Math.floor(captureH * scale);
+
+  var scanCanvas = document.createElement('canvas');
+  scanCanvas.width = scanW;
+  scanCanvas.height = scanH;
+  var scanCtx = scanCanvas.getContext('2d');
+  scanCtx.imageSmoothingEnabled = false;
+  scanCtx.drawImage(capCanvas, 0, 0, scanW, scanH);
+
+  var imgData = scanCtx.getImageData(0, 0, scanW, scanH);
+  var decoded = RawGrid.decode(imgData.data, imgData.width, imgData.height);
+  return { decoded: decoded, scanW: scanW, scanH: scanH, gridOnScan: gridCanvas.width * scale };
+}
+
+// ============ Test 1: Basic roundtrip ============
+(function() {
+  info('Test 1: basic encode/decode roundtrip (no scaling)');
+
+  var payload = new Uint8Array(200);
+  for (var i = 0; i < 200; i++) payload[i] = (i * 37 + 11) & 0xFF;
+
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 5, totalFrames: 50,
+    fecGroup: 1, fecGroupSize: 8, fecK: 5, fileSize: 5000,
+    payload: payload
+  });
+
+  var decoded = renderDecode(frame, 4);
+  assert(decoded !== null, 'decode returns non-null');
+  assert(arraysEqual(frame, decoded), 'roundtrip bytes match (' + frame.length + ' bytes)');
+
+  // Verify FrameProtocol unpacks correctly
+  var unpacked = FrameProtocol.unpackFrame(decoded);
+  assert(unpacked !== null, 'FrameProtocol.unpackFrame succeeds');
+  assert(unpacked.frameIdx === 5, 'frameIdx preserved');
+  assert(unpacked.fecK === 5, 'fecK preserved');
+  assert(arraysEqual(unpacked.payload, payload), 'payload bytes match');
+})();
+
+// ============ Test 2: Different cell sizes ============
+(function() {
+  info('Test 2: various cell sizes');
+
+  var payload = new Uint8Array(100);
+  for (var i = 0; i < 100; i++) payload[i] = i & 0xFF;
+
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 0, totalFrames: 10,
+    fecGroup: 0, fecGroupSize: 7, fecK: 5, fileSize: 1000,
+    payload: payload
+  });
+
+  var sizes = [4, 5, 6];
+  for (var s = 0; s < sizes.length; s++) {
+    var cp = sizes[s];
+    var decoded = renderDecode(frame, cp);
+    var ok = decoded && arraysEqual(frame, decoded);
+    assert(ok, 'cellPx=' + cp + ' roundtrip');
+  }
+})();
+
+// ============ Test 3: Simulated screen capture + downscale ============
+(function() {
+  info('Test 3: simulated screen capture (1920x1080 -> 960px scan)');
+
+  var payload = new Uint8Array(200);
+  for (var i = 0; i < 200; i++) payload[i] = (i * 73 + 31) & 0xFF;
+
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 0, totalFrames: 10,
+    fecGroup: 0, fecGroupSize: 6, fecK: 5, fileSize: 2000,
+    payload: payload
+  });
+
+  var result = simulateCapture(frame, 6, 1920, 1080, 960);
+  assert(result.decoded !== null, 'decode after capture+downscale returns non-null');
+  if (result.decoded) {
+    var ok = arraysEqual(frame, result.decoded);
+    assert(ok, 'roundtrip after capture simulation (gridOnScan=' + result.gridOnScan.toFixed(0) + 'px)');
+    if (!ok) {
+      info('  frame=' + frame.length + 'B decoded=' + result.decoded.length + 'B');
+      for (var i = 0; i < Math.min(frame.length, result.decoded.length); i++) {
+        if (frame[i] !== result.decoded[i]) {
+          info('  first diff at byte[' + i + ']: ' + frame[i].toString(16) + ' vs ' + result.decoded[i].toString(16));
+          break;
+        }
+      }
+    }
+  }
+})();
+
+// ============ Test 4: locateFinders on simulated capture ============
+(function() {
+  info('Test 4: locateFinders accuracy');
+
+  var payload = new Uint8Array(200);
+  for (var i = 0; i < 200; i++) payload[i] = ((i * 17) ^ 0xAA) & 0xFF;
+
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 0, totalFrames: 10,
+    fecGroup: 0, fecGroupSize: 6, fecK: 5, fileSize: 2000,
+    payload: payload
+  });
+
+  // Render at 6px/cell, place in 1920x1080, downscale to 960
+  var gridCanvas = RawGrid.render(frame, 6);
+  var captureW = 1920, captureH = 1080;
+  var capCanvas = document.createElement('canvas');
+  capCanvas.width = captureW; capCanvas.height = captureH;
+  var capCtx = capCanvas.getContext('2d');
+  capCtx.fillStyle = '#888888';
+  capCtx.fillRect(0, 0, captureW, captureH);
+  var gridX = Math.floor((captureW - gridCanvas.width) / 2);
+  var gridY = Math.floor((captureH - gridCanvas.height) / 2);
+  capCtx.drawImage(gridCanvas, gridX, gridY);
+
+  var scanMax = 960;
+  var scale = scanMax / captureW;
+  var scanW = Math.floor(captureW * scale);
+  var scanH = Math.floor(captureH * scale);
+  var scanCanvas = document.createElement('canvas');
+  scanCanvas.width = scanW; scanCanvas.height = scanH;
+  var scanCtx = scanCanvas.getContext('2d');
+  scanCtx.imageSmoothingEnabled = false;
+  scanCtx.drawImage(capCanvas, 0, 0, scanW, scanH);
+  var imgData = scanCtx.getImageData(0, 0, scanW, scanH);
+
+  var pair = RawGrid.locateFinders(imgData.data, imgData.width, imgData.height);
+  assert(pair !== null, 'locateFinders finds both finders');
+  if (pair) {
+    var msX = (pair.br.cx - pair.tl.cx) / 93;
+    var msY = (pair.br.cy - pair.tl.cy) / 93;
+    var expectedMs = 6 * scale;
+    info('  TL: (' + pair.tl.cx.toFixed(1) + ',' + pair.tl.cy.toFixed(1) + ')');
+    info('  BR: (' + pair.br.cx.toFixed(1) + ',' + pair.br.cy.toFixed(1) + ')');
+    info('  msX=' + msX.toFixed(2) + ' msY=' + msY.toFixed(2) + ' expected~' + expectedMs.toFixed(2));
+    assert(msX >= 2.5 && msX <= 4, 'msX in expected range');
+  }
+})();
+
+// ============ Test 5: Edge bytes ============
+(function() {
+  info('Test 5: all byte values 0x00-0xFF');
+
+  var payload = new Uint8Array(256);
+  for (var i = 0; i < 256; i++) payload[i] = i;
+
+  var frame = FrameProtocol.packFrame({
+    fileId: 0, frameIdx: 42, totalFrames: 100,
+    fecGroup: 2, fecGroupSize: 8, fecK: 5, fileSize: 3000,
+    payload: payload
+  });
+
+  var decoded = renderDecode(frame, 4);
+  var ok = decoded && arraysEqual(frame, decoded);
+  assert(ok, 'all byte values roundtrip');
+  if (!ok && decoded) {
+    for (var i = 0; i < Math.min(frame.length, decoded.length); i++) {
+      if (frame[i] !== decoded[i]) {
+        info('  first diff at byte[' + i + ']: ' + frame[i].toString(16) + ' vs ' + decoded[i].toString(16));
+        break;
+      }
+    }
+  }
+})();
+
+// ============ Summary ============
+(function() {
+  var el = document.createElement('div');
+  el.className = 'result';
+  el.style.marginTop = '16px';
+  el.style.fontWeight = 'bold';
+  if (failed === 0) {
+    el.innerHTML = '<span class="pass">ALL ' + passed + ' TESTS PASSED</span>';
+  } else {
+    el.innerHTML = '<span class="pass">' + passed + ' passed</span>, <span class="fail">' + failed + ' FAILED</span>';
+  }
+  results.appendChild(el);
+})();
+</script>
+</body>
+</html>

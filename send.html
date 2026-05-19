@@ -97,8 +97,8 @@ input[type=file] { display: none; }
         <label>Mode</label>
         <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
           <button class="mode-btn" data-mode="camera">Camera</button>
-          <button class="mode-btn active" data-mode="screen">Screen-QR</button>
-          <button class="mode-btn" data-mode="rawgrid">RawGrid</button>
+          <button class="mode-btn" data-mode="screen">Screen-QR</button>
+          <button class="mode-btn active" data-mode="rawgrid">RawGrid</button>
         </div>
       </div>
       <div class="setting-row">
@@ -177,6 +177,9 @@ input[type=file] { display: none; }
     <div class="controls">
       <button class="btn btn-pause" id="btnPause">Pause</button>
       <button class="btn btn-stop" id="btnStop">Stop</button>
+      <label style="margin-left:12px;font-size:12px;color:#888;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="chkSelfTest" style="vertical-align:middle;margin-right:4px;">Self-test
+      </label>
     </div>
     <div id="diag" style="margin-top:12px;padding:8px;background:#f5f5f5;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:left;display:none;max-height:300px;overflow-y:auto;word-break:break-all;"></div>
   </div>
@@ -222,6 +225,9 @@ input[type=file] { display: none; }
   var activeInterval = 150;
   var selfTestTick = 0;
   var selfTestSkipCount = 0;
+  var selfTestOk = 0;
+  var selfTestFail = 0;
+  var selfTestFailLog = [];
   var qrCode = null;
 
   function showStage(n) {
@@ -246,12 +252,12 @@ input[type=file] { display: none; }
 
   settingsToggle.addEventListener('click', function() { settingsBody.classList.toggle('open'); });
 
-  var senderMode = 'screen';
+  var senderMode = 'rawgrid';
 
   var modeDefaults = {
     camera:  { interval: 150, qrVersion: 10, fec: '5,1' },
     screen:  { interval: 80,  qrVersion: 15, fec: '7,3' },
-    rawgrid: { interval: 50,  qrVersion: 0,  fec: '4,1' }
+    rawgrid: { interval: 33,  qrVersion: 0,  fec: '4,1' }
   };
 
   function applyModeDefaults(mode) {
@@ -260,11 +266,12 @@ input[type=file] { display: none; }
     document.getElementById('optInterval').value = String(d.interval);
     document.getElementById('optQRVersion').value = String(d.qrVersion);
     document.getElementById('optFEC').value = d.fec;
-    // Hide QR version selector in rawgrid mode (grid size is auto-computed)
+    // Hide QR version and EC level selectors in rawgrid mode
     document.getElementById('optQRVersion').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
+    document.getElementById('optECLevel').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
   }
 
-  applyModeDefaults('screen');
+  applyModeDefaults('rawgrid');
 
   document.getElementById('senderMode').addEventListener('click', function(e) {
     if (!e.target.classList.contains('mode-btn')) return;
@@ -370,6 +377,9 @@ input[type=file] { display: none; }
     roundCount = 0;
     selfTestTick = 0;
     selfTestSkipCount = 0;
+    selfTestOk = 0;
+    selfTestFail = 0;
+    selfTestFailLog = [];
     paused = false;
     btnPause.textContent = 'Pause';
     shuffleCycle();
@@ -473,14 +483,19 @@ input[type=file] { display: none; }
       }
 
       // Self-test: decode QR from canvas using jsQR, verify roundtrip
-      // Skip self-test on fast intervals (screen mode) to avoid blocking the timer
+      // Controlled by checkbox, default off
       var diag = document.getElementById('diag');
-      if (!selfTestSkipCount) {
-        selfTestSkipCount = (activeInterval < 80) ? 60 : (senderMode === 'rawgrid' ? 1 : 1);
+      var selfTestEnabled = document.getElementById('chkSelfTest').checked;
+      if (!selfTestEnabled) {
+        diag.style.display = 'none';
       }
-      selfTestTick++;
-      if (selfTestTick >= selfTestSkipCount) {
-        selfTestTick = 0;
+      if (selfTestEnabled) {
+        if (!selfTestSkipCount) {
+          selfTestSkipCount = (activeInterval < 80) ? 60 : (senderMode === 'rawgrid' ? 1 : 1);
+        }
+        selfTestTick++;
+        if (selfTestTick >= selfTestSkipCount) {
+          selfTestTick = 0;
         try {
           diag.style.display = 'block';
           var qrCanvas = qrWrapper.querySelector('canvas');
@@ -507,51 +522,31 @@ input[type=file] { display: none; }
                 if (frame[bi] !== recovered[bi]) match = false;
               }
               if (senderMode === 'rawgrid') {
-                // Build detailed debug output for every rawgrid self-test
-                var hexHead = '', hexTail = '';
-                for (var hi = 0; hi < Math.min(10, frame.length); hi++) {
-                  hexHead += ('00' + frame[hi].toString(16)).slice(-2);
+                if (match) {
+                  selfTestOk++;
+                } else {
+                  selfTestFail++;
+                  var hexHead = '', hexTail = '';
+                  for (var hi = 0; hi < Math.min(10, frame.length); hi++) {
+                    hexHead += ('00' + frame[hi].toString(16)).slice(-2);
+                  }
+                  for (var ti = Math.max(0, frame.length - 10); ti < frame.length; ti++) {
+                    hexTail += ('00' + frame[ti].toString(16)).slice(-2);
+                  }
+                  var entry = '#' + (selfTestOk + selfTestFail) + ' MISMATCH: ' + hexHead + '...' + hexTail;
+                  if (rgDebug && rgDebug.tl) entry += ' TL(' + rgDebug.tl.cx.toFixed(0) + ',' + rgDebug.tl.cy.toFixed(0) + ')';
+                  if (rgDebug && rgDebug.br) entry += ' BR(' + rgDebug.br.cx.toFixed(0) + ',' + rgDebug.br.cy.toFixed(0) + ')';
+                  if (rgDebug && rgDebug.msX != null) entry += ' ms=' + rgDebug.msX.toFixed(1);
+                  if (rgDebug && rgDebug.error) entry += ' err=' + rgDebug.error;
+                  selfTestFailLog.push(entry);
                 }
-                for (var ti = Math.max(0, frame.length - 10); ti < frame.length; ti++) {
-                  hexTail += ('00' + frame[ti].toString(16)).slice(-2);
+                diag.style.display = 'block';
+                var status = 'Self-test: ' + selfTestOk + ' OK, ' + selfTestFail + ' FAIL';
+                if (selfTestFailLog.length > 0) {
+                  status += '\n' + selfTestFailLog.join('\n');
                 }
-                var lines = [];
-                lines.push('Enc: ' + hexHead + '...' + hexTail + ' (' + frame.length + 'B)');
-                if (rgDebug) {
-                  if (rgDebug.error && !rgDebug.bestPair) {
-                    lines.push('Locate: FAIL - ' + rgDebug.error);
-                  }
-                  var rawList = (rgDebug.rawCoords || []).slice(0, 15);
-                  lines.push('Raw[' + rgDebug.rawCandidates + ']:');
-                  for (var ri = 0; ri < rawList.length; ri++) {
-                    lines.push('  ' + rawList[ri]);
-                  }
-                  if (rgDebug.rawCandidates > 15) lines.push('  ... +' + (rgDebug.rawCandidates - 15) + ' more');
-                  if (rgDebug.crossedCoords && rgDebug.crossedCoords.length > 0) {
-                    lines.push('Crossed[' + rgDebug.crossedCandidates + ']:');
-                    for (var ci = 0; ci < rgDebug.crossedCoords.length; ci++) {
-                      lines.push('  ' + rgDebug.crossedCoords[ci]);
-                    }
-                  } else {
-                    lines.push('Crossed[' + rgDebug.crossedCandidates + ']: (none)');
-                  }
-                  lines.push('Top=' + rgDebug.topCount);
-                  if (rgDebug.bestPair) {
-                    lines.push('TL: (' + rgDebug.bestPair.tlCx.toFixed(1) + ',' + rgDebug.bestPair.tlCy.toFixed(1) + ') ms=' + rgDebug.bestPair.tlMs.toFixed(2));
-                    lines.push('BR: (' + rgDebug.bestPair.brCx.toFixed(1) + ',' + rgDebug.bestPair.brCy.toFixed(1) + ') ms=' + rgDebug.bestPair.brMs.toFixed(2));
-                    lines.push('msX=' + (rgDebug.msX ? rgDebug.msX.toFixed(2) : '?') + ' msY=' + (rgDebug.msY ? rgDebug.msY.toFixed(2) : '?'));
-                  }
-                  if (rgDebug.originX != null) {
-                    lines.push('Origin: (' + rgDebug.originX.toFixed(1) + ',' + rgDebug.originY.toFixed(1) + ') thresh=' + (rgDebug.binarizeThreshold ? rgDebug.binarizeThreshold.toFixed(0) : '?'));
-                    lines.push('H-timing: ' + (rgDebug.hTimingRate ? (rgDebug.hTimingRate * 100).toFixed(1) + '%' : '?'));
-                  }
-                  if (rgDebug.decodeError) {
-                    lines.push('Decode: ' + rgDebug.decodeError + ' (tries=' + (rgDebug.decodeTries || '?') + ')');
-                  }
-                }
-                lines.push(match ? 'RESULT: OK' : 'RESULT: MISMATCH (frame=' + frame.length + 'B decoded=' + recovered.length + 'B)');
-                diag.innerHTML = lines.join('<br>');
-                diag.style.color = match ? '#4caf50' : '#f44336';
+                diag.innerHTML = status.replace(/\n/g, '<br>');
+                diag.style.color = selfTestFail > 0 ? '#f44336' : '#4caf50';
               } else {
                 var modeLabel = 'QR';
                 diag.innerHTML = match
@@ -568,7 +563,8 @@ input[type=file] { display: none; }
                 }
               }
             } else if (senderMode === 'rawgrid') {
-              // Decode returned null — show locate debug info
+              // Decode returned null — accumulate failure
+              selfTestFail++;
               var hexHead = '', hexTail = '';
               for (var hi = 0; hi < Math.min(10, frame.length); hi++) {
                 hexHead += ('00' + frame[hi].toString(16)).slice(-2);
@@ -576,38 +572,18 @@ input[type=file] { display: none; }
               for (var ti = Math.max(0, frame.length - 10); ti < frame.length; ti++) {
                 hexTail += ('00' + frame[ti].toString(16)).slice(-2);
               }
-              var lines = [];
-              lines.push('Enc: ' + hexHead + '...' + hexTail + ' (' + frame.length + 'B)');
+              var entry = '#' + (selfTestOk + selfTestFail) + ' NULL: ' + hexHead + '...' + hexTail;
               if (rgDebug) {
-                var rawList = (rgDebug.rawCoords || []).slice(0, 15);
-                lines.push('Raw[' + rgDebug.rawCandidates + ']:');
-                for (var ri = 0; ri < rawList.length; ri++) {
-                  lines.push('  ' + rawList[ri]);
-                }
-                if (rgDebug.rawCandidates > 15) lines.push('  ... +' + (rgDebug.rawCandidates - 15) + ' more');
-                if (rgDebug.crossedCoords && rgDebug.crossedCoords.length > 0) {
-                  lines.push('Crossed[' + rgDebug.crossedCandidates + ']:');
-                  for (var ci = 0; ci < rgDebug.crossedCoords.length; ci++) {
-                    lines.push('  ' + rgDebug.crossedCoords[ci]);
-                  }
-                } else {
-                  lines.push('Crossed[' + rgDebug.crossedCandidates + ']: (none)');
-                }
-                lines.push('Top=' + rgDebug.topCount);
-                if (rgDebug.bestPair) {
-                  lines.push('TL: (' + rgDebug.bestPair.tlCx.toFixed(1) + ',' + rgDebug.bestPair.tlCy.toFixed(1) + ') ms=' + rgDebug.bestPair.tlMs.toFixed(2));
-                  lines.push('BR: (' + rgDebug.bestPair.brCx.toFixed(1) + ',' + rgDebug.bestPair.brCy.toFixed(1) + ') ms=' + rgDebug.bestPair.brMs.toFixed(2));
-                  lines.push('msX=' + (rgDebug.msX ? rgDebug.msX.toFixed(2) : '?') + ' msY=' + (rgDebug.msY ? rgDebug.msY.toFixed(2) : '?'));
-                }
-                if (rgDebug.originX != null) {
-                  lines.push('Origin: (' + rgDebug.originX.toFixed(1) + ',' + rgDebug.originY.toFixed(1) + ') thresh=' + (rgDebug.binarizeThreshold ? rgDebug.binarizeThreshold.toFixed(0) : '?'));
-                  lines.push('H-timing: ' + (rgDebug.hTimingRate ? (rgDebug.hTimingRate * 100).toFixed(1) + '%' : '?'));
-                }
-                lines.push('Error: ' + (rgDebug.error || rgDebug.decodeError || 'unknown'));
-              } else {
-                lines.push('Error: RawGrid.decode returned null (no debug)');
+                entry += ' rowHits=' + rgDebug.rowHits + ' cand=' + rgDebug.candidates + ' finders=' + rgDebug.finderCount;
+                if (rgDebug.error) entry += ' err=' + rgDebug.error;
               }
-              diag.innerHTML = lines.join('<br>');
+              selfTestFailLog.push(entry);
+              diag.style.display = 'block';
+              var status2 = 'Self-test: ' + selfTestOk + ' OK, ' + selfTestFail + ' FAIL';
+              if (selfTestFailLog.length > 0) {
+                status2 += '\n' + selfTestFailLog.join('\n');
+              }
+              diag.innerHTML = status2.replace(/\n/g, '<br>');
               diag.style.color = '#f44336';
             } else {
               diag.innerHTML = 'DIAG FAIL: jsQR could not decode QR from canvas';
@@ -619,6 +595,7 @@ input[type=file] { display: none; }
           diag.innerHTML = 'DIAG ERR: ' + e.message;
           diag.style.color = '#f44336';
         }
+      }
       }
 
       document.getElementById('statFrame').textContent = (cycleFrameIdx + 1) + '/' + cycleFrames.length;

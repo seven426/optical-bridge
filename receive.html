@@ -89,8 +89,8 @@ video { display: block; width: 100%; }
     </div>
     <div class="mode-selector" id="receiverMode" style="display:flex;gap:4px;background:#1a1a1a;border-radius:6px;padding:3px;margin-bottom:8px;border:1px solid #333;">
       <button class="mode-btn" data-mode="camera" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Camera</button>
-      <button class="mode-btn active" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">Screen-QR</button>
-      <button class="mode-btn" data-mode="rawgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">RawGrid</button>
+      <button class="mode-btn" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Screen-QR</button>
+      <button class="mode-btn active" data-mode="rawgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">RawGrid</button>
     </div>
     <button class="btn btn-primary" id="btnStart">Start Screen Capture</button>
   </div>
@@ -156,7 +156,8 @@ video { display: block; width: 100%; }
   var scanning = false;
   var scanTimer = null;
   var completeFile = null;
-  var receiverMode = 'screen';
+  var receiverMode = 'rawgrid';
+  btnStart.textContent = 'Start RawGrid';
   var firstFrameTime = null;
   var transferFileSize = null;
 
@@ -253,7 +254,7 @@ video { display: block; width: 100%; }
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = false;  // nearest-neighbor: preserves sharp cell edges after downscale
-    var SCAN_INTERVAL_MS = screenMode ? 50 : 150;
+    var SCAN_INTERVAL_MS = receiverMode === 'rawgrid' ? 0 : (screenMode ? 50 : 150);
     var MAX_SCAN_DIM = screenMode ? 960 : 640;
     var totalScanAttempts = 0;
     var qrDetected = 0;
@@ -334,15 +335,18 @@ video { display: block; width: 100%; }
             var regionH = Math.min(qrRegion.h, scanH - qrRegion.y);
             if (regionW > 0 && regionH > 0) {
               imageData = ctx.getImageData(qrRegion.x, qrRegion.y, regionW, regionH);
-              var ph = pixelHash(imageData.data);
-              if (seenHashes[ph]) {
-                hashHits++;
-                qrData = null;  // duplicate pixel data, skip jsQR
-              } else if (receiverMode === 'rawgrid') {
-                var rawBytes = RawGrid.decode(imageData.data, imageData.width, imageData.height);
-                qrData = rawBytes ? { binaryData: rawBytes } : null;
-              } else {
-                qrData = jsQR(imageData.data, imageData.width, imageData.height);
+              var skip = false;
+              if (receiverMode !== 'rawgrid') {
+                var ph = pixelHash(imageData.data);
+                if (seenHashes[ph]) { hashHits++; skip = true; }
+              }
+              if (!skip) {
+                if (receiverMode === 'rawgrid') {
+                  var rawBytes = RawGrid.decode(imageData.data, imageData.width, imageData.height);
+                  qrData = rawBytes ? { binaryData: rawBytes } : null;
+                } else {
+                  qrData = jsQR(imageData.data, imageData.width, imageData.height);
+                }
               }
               usedCrop = true;
             }
@@ -353,22 +357,23 @@ video { display: block; width: 100%; }
             if (usedCrop) cropMissCount++; else cropMissCount = 0;
             if (cropMissCount >= 5) { qrRegion = null; cropMissCount = 0; }
             imageData = ctx.getImageData(0, 0, scanW, scanH);
-            var fph = pixelHash(imageData.data);
-            if (!seenHashes[fph]) {
+            var dupe = false;
+            if (receiverMode !== 'rawgrid') {
+              var fph = pixelHash(imageData.data);
+              if (seenHashes[fph]) { hashHits++; dupe = true; }
+            }
+            if (!dupe) {
               if (receiverMode === 'rawgrid') {
                 var rb = RawGrid.decode(imageData.data, imageData.width, imageData.height);
                 qrData = rb ? { binaryData: rb } : null;
               } else {
                 qrData = jsQR(imageData.data, imageData.width, imageData.height);
               }
-            } else {
-              hashHits++;
-              qrData = null;
             }
           } else {
             cropMissCount = 0;
-            // Cache pixel hash to skip jsQR on duplicate frames
-            if (imageData) seenHashes[pixelHash(imageData.data)] = true;
+            // Cache pixel hash to skip jsQR on duplicate frames (rawgrid skips dedup)
+            if (imageData && receiverMode !== 'rawgrid') seenHashes[pixelHash(imageData.data)] = true;
           }
           totalScanAttempts++;
 
@@ -381,16 +386,19 @@ video { display: block; width: 100%; }
             if (qrData.location) {
               saveCropRegion(qrData.location, scanW, scanH);
             } else if (receiverMode === 'rawgrid') {
-              // RawGrid: locate grid to set crop region for subsequent scans
-              var grids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
-              if (grids && grids.length > 0) {
-                var gridLoc = grids[0];
-                var estW = Math.ceil(gridLoc.msX * gridLoc.gridSize);
-                var estH = Math.ceil(gridLoc.msY * gridLoc.gridSize);
-                var pad = Math.max(Math.round(gridLoc.msX * 3), 15);
+              // RawGrid: locate finders to set crop region for subsequent scans
+              var pair = RawGrid.locateFinders(imageData.data, imageData.width, imageData.height);
+              if (pair) {
+                var msX = (pair.br.cx - pair.tl.cx) / 93;
+                var msY = (pair.br.cy - pair.tl.cy) / 93;
+                var ox = pair.tl.cx - 3.5 * msX;
+                var oy = pair.tl.cy - 3.5 * msY;
+                var estW = Math.ceil(msX * 100);
+                var estH = Math.ceil(msY * 100);
+                var pad = Math.max(Math.round(msX * 3), 15);
                 qrRegion = {
-                  x: Math.max(0, Math.floor(gridLoc.originX - pad)),
-                  y: Math.max(0, Math.floor(gridLoc.originY - pad)),
+                  x: Math.max(0, Math.floor(ox - pad)),
+                  y: Math.max(0, Math.floor(oy - pad)),
                   w: Math.min(scanW, estW + pad * 2),
                   h: Math.min(scanH, estH + pad * 2)
                 };
@@ -437,21 +445,17 @@ video { display: block; width: 100%; }
         // Update rawgrid status every scan
         if (receiverMode === 'rawgrid' && (!qrData || !qrData.binaryData || qrData.binaryData.length === 0)) {
           var rgEl = document.getElementById('rgStatus');
-          // Try locateGrid directly
-          var testGrids = RawGrid.locateGrid(imageData.data, imageData.width, imageData.height);
-          var info = 'scan ' + totalScanAttempts + ' | grids: ';
-          if (testGrids && testGrids.length > 0) {
-            var best = testGrids[0];
-            info += testGrids.length + ' cp=' + best.cellPx + ' gs=' + best.gridSize + ' @' + Math.round(best.originX) + ',' + Math.round(best.originY);
-            var testDec = RawGrid.decode(imageData.data, imageData.width, imageData.height);
-            if (testDec) {
-              var ddv = new DataView(testDec.buffer, testDec.byteOffset, testDec.byteLength);
-              info += ' dec:' + testDec.length + 'B m=' + ddv.getUint16(0,false).toString(16) + ' fk=' + ddv.getUint16(14,false);
-            } else { info += ' dec:null'; }
-          } else { info += '0'; }
-          info += ' img:' + imageData.width + 'x' + Math.floor(imageData.data.length/4/imageData.width);
+          var pair = RawGrid.locateFinders(imageData.data, imageData.width, imageData.height);
+          var rgDbg = RawGrid.getLastDebug();
+          var info = 'scan ' + totalScanAttempts + ' | rowHits=' + (rgDbg ? rgDbg.rowHits : '?') + ' cand=' + (rgDbg ? rgDbg.candidates : '?') + ' finders=' + (rgDbg ? rgDbg.finderCount : '?');
+          if (rgDbg && rgDbg.topLeft10 && rgDbg.topLeft10.length) {
+            info += ' L:' + rgDbg.topLeft10.map(function(f) { return '(' + f.cx.toFixed(0) + ',' + f.cy.toFixed(0) + ')'; }).join(',');
+          }
+          if (rgDbg && rgDbg.topRight10 && rgDbg.topRight10.length) {
+            info += ' R:' + rgDbg.topRight10.map(function(f) { return '(' + f.cx.toFixed(0) + ',' + f.cy.toFixed(0) + ')'; }).join(',');
+          }
           rgEl.textContent = info;
-          rgEl.style.color = testGrids && testGrids.length > 0 ? '#ff9800' : '#888';
+          rgEl.style.color = pair ? '#ff9800' : '#888';
         }
 
         // Update diagnostic every 5 scans
