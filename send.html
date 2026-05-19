@@ -291,7 +291,7 @@ input[type=file] { display: none; }
       fecN: parseInt(fecParts[1]),
       ecLevel: document.getElementById('optECLevel').value,
       mode: senderMode,
-      cellPx: senderMode === 'rawgrid' ? 5 : 0
+      cellPx: senderMode === 'rawgrid' ? 6 : 0
     };
   }
 
@@ -474,7 +474,7 @@ input[type=file] { display: none; }
       }
 
       if (senderMode === 'rawgrid') {
-        var cellPx = state.cellPx || 5;
+        var cellPx = state.cellPx || 6;
         var gridCanvas = RawGrid.render(frame, cellPx);
         qrWrapper.innerHTML = '';
         qrWrapper.appendChild(gridCanvas);
