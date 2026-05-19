@@ -521,11 +521,17 @@ input[type=file] { display: none; }
                   if (rgDebug.error && !rgDebug.bestPair) {
                     lines.push('Locate: FAIL - ' + rgDebug.error);
                   }
-                  var rawList = (rgDebug.rawCoords || []).slice(0, 15).join(' ');
-                  lines.push('Raw[' + rgDebug.rawCandidates + ']: ' + (rawList || '(none)'));
+                  var rawList = (rgDebug.rawCoords || []).slice(0, 15);
+                  lines.push('Raw[' + rgDebug.rawCandidates + ']:');
+                  for (var ri = 0; ri < rawList.length; ri++) {
+                    lines.push('  ' + rawList[ri]);
+                  }
+                  if (rgDebug.rawCandidates > 15) lines.push('  ... +' + (rgDebug.rawCandidates - 15) + ' more');
                   if (rgDebug.crossedCoords && rgDebug.crossedCoords.length > 0) {
-                    var crossedList = rgDebug.crossedCoords.join(' ');
-                    lines.push('Crossed[' + rgDebug.crossedCandidates + ']: ' + crossedList);
+                    lines.push('Crossed[' + rgDebug.crossedCandidates + ']:');
+                    for (var ci = 0; ci < rgDebug.crossedCoords.length; ci++) {
+                      lines.push('  ' + rgDebug.crossedCoords[ci]);
+                    }
                   } else {
                     lines.push('Crossed[' + rgDebug.crossedCandidates + ']: (none)');
                   }
@@ -573,10 +579,17 @@ input[type=file] { display: none; }
               var lines = [];
               lines.push('Enc: ' + hexHead + '...' + hexTail + ' (' + frame.length + 'B)');
               if (rgDebug) {
-                var rawList = (rgDebug.rawCoords || []).slice(0, 15).join(' ');
-                lines.push('Raw[' + rgDebug.rawCandidates + ']: ' + (rawList || '(none)'));
+                var rawList = (rgDebug.rawCoords || []).slice(0, 15);
+                lines.push('Raw[' + rgDebug.rawCandidates + ']:');
+                for (var ri = 0; ri < rawList.length; ri++) {
+                  lines.push('  ' + rawList[ri]);
+                }
+                if (rgDebug.rawCandidates > 15) lines.push('  ... +' + (rgDebug.rawCandidates - 15) + ' more');
                 if (rgDebug.crossedCoords && rgDebug.crossedCoords.length > 0) {
-                  lines.push('Crossed[' + rgDebug.crossedCandidates + ']: ' + rgDebug.crossedCoords.join(' '));
+                  lines.push('Crossed[' + rgDebug.crossedCandidates + ']:');
+                  for (var ci = 0; ci < rgDebug.crossedCoords.length; ci++) {
+                    lines.push('  ' + rgDebug.crossedCoords[ci]);
+                  }
                 } else {
                   lines.push('Crossed[' + rgDebug.crossedCandidates + ']: (none)');
                 }
