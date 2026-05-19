@@ -178,7 +178,7 @@ input[type=file] { display: none; }
       <button class="btn btn-pause" id="btnPause">Pause</button>
       <button class="btn btn-stop" id="btnStop">Stop</button>
     </div>
-    <div id="diag" style="margin-top:12px;padding:8px;background:#f5f5f5;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:center;display:none;"></div>
+    <div id="diag" style="margin-top:12px;padding:8px;background:#f5f5f5;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:left;display:none;max-height:300px;overflow-y:auto;word-break:break-all;"></div>
   </div>
 </div>
 
@@ -476,7 +476,7 @@ input[type=file] { display: none; }
       // Skip self-test on fast intervals (screen mode) to avoid blocking the timer
       var diag = document.getElementById('diag');
       if (!selfTestSkipCount) {
-        selfTestSkipCount = (activeInterval < 80) ? 60 : (senderMode === 'rawgrid' ? 10 : 1);
+        selfTestSkipCount = (activeInterval < 80) ? 60 : (senderMode === 'rawgrid' ? 1 : 1);
       }
       selfTestTick++;
       if (selfTestTick >= selfTestSkipCount) {
@@ -488,8 +488,10 @@ input[type=file] { display: none; }
             var ctx2 = qrCanvas.getContext('2d');
             var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
             var recovered = null;
+            var rgDebug = null;
             if (senderMode === 'rawgrid') {
               recovered = RawGrid.decode(imgData.data, imgData.width, imgData.height);
+              rgDebug = RawGrid.getLastDebug();
             } else {
               var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
               if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
@@ -504,14 +506,45 @@ input[type=file] { display: none; }
               for (var bi = 0; bi < frame.length && match; bi++) {
                 if (frame[bi] !== recovered[bi]) match = false;
               }
-              if (match) {
-                var modeLabel = senderMode === 'rawgrid' ? 'RawGrid' : 'QR';
-                diag.innerHTML = 'DIAG OK: ' + modeLabel + ' encode/decode roundtrip verified (' + recovered.length + ' bytes)';
-                diag.style.color = '#4caf50';
+              if (senderMode === 'rawgrid') {
+                // Build detailed debug output for every rawgrid self-test
+                var hexHead = '', hexTail = '';
+                for (var hi = 0; hi < Math.min(10, frame.length); hi++) {
+                  hexHead += ('00' + frame[hi].toString(16)).slice(-2);
+                }
+                for (var ti = Math.max(0, frame.length - 10); ti < frame.length; ti++) {
+                  hexTail += ('00' + frame[ti].toString(16)).slice(-2);
+                }
+                var lines = [];
+                lines.push('Enc: ' + hexHead + '...' + hexTail + ' (' + frame.length + 'B)');
+                if (rgDebug) {
+                  if (rgDebug.error && !rgDebug.bestPair) {
+                    lines.push('Locate: FAIL - ' + rgDebug.error);
+                    lines.push('RawCandidates=' + rgDebug.rawCandidates + ' Crossed=' + rgDebug.crossedCandidates + ' Top=' + rgDebug.topCount);
+                  }
+                  if (rgDebug.bestPair) {
+                    lines.push('TL: (' + rgDebug.bestPair.tlCx.toFixed(1) + ',' + rgDebug.bestPair.tlCy.toFixed(1) + ') ms=' + rgDebug.bestPair.tlMs.toFixed(2));
+                    lines.push('BR: (' + rgDebug.bestPair.brCx.toFixed(1) + ',' + rgDebug.bestPair.brCy.toFixed(1) + ') ms=' + rgDebug.bestPair.brMs.toFixed(2));
+                    lines.push('msX=' + (rgDebug.msX ? rgDebug.msX.toFixed(2) : '?') + ' msY=' + (rgDebug.msY ? rgDebug.msY.toFixed(2) : '?'));
+                  }
+                  if (rgDebug.originX != null) {
+                    lines.push('Origin: (' + rgDebug.originX.toFixed(1) + ',' + rgDebug.originY.toFixed(1) + ') thresh=' + (rgDebug.binarizeThreshold ? rgDebug.binarizeThreshold.toFixed(0) : '?'));
+                    lines.push('H-timing: ' + (rgDebug.hTimingRate ? (rgDebug.hTimingRate * 100).toFixed(1) + '%' : '?'));
+                  }
+                  if (rgDebug.decodeError) {
+                    lines.push('Decode: ' + rgDebug.decodeError + ' (tries=' + (rgDebug.decodeTries || '?') + ')');
+                  }
+                }
+                lines.push(match ? 'RESULT: OK' : 'RESULT: MISMATCH (frame=' + frame.length + 'B decoded=' + recovered.length + 'B)');
+                diag.innerHTML = lines.join('<br>');
+                diag.style.color = match ? '#4caf50' : '#f44336';
               } else {
-                diag.innerHTML = 'DIAG FAIL: roundtrip mismatch (frame=' + frame.length + 'B, decoded=' + recovered.length + 'B)';
-                diag.style.color = '#f44336';
-                if (frame.length === recovered.length) {
+                var modeLabel = 'QR';
+                diag.innerHTML = match
+                  ? 'DIAG OK: ' + modeLabel + ' encode/decode roundtrip verified (' + recovered.length + ' bytes)'
+                  : 'DIAG FAIL: roundtrip mismatch (frame=' + frame.length + 'B, decoded=' + recovered.length + 'B)';
+                diag.style.color = match ? '#4caf50' : '#f44336';
+                if (!match && frame.length === recovered.length) {
                   for (var bi = 0; bi < frame.length; bi++) {
                     if (frame[bi] !== recovered[bi]) {
                       diag.innerHTML += ' first diff at byte[' + bi + ']: ' + frame[bi].toString(16) + ' vs ' + recovered[bi].toString(16);
@@ -521,7 +554,32 @@ input[type=file] { display: none; }
                 }
               }
             } else if (senderMode === 'rawgrid') {
-              diag.innerHTML = 'DIAG FAIL: RawGrid.decode returned null';
+              // Decode returned null — show locate debug info
+              var hexHead = '', hexTail = '';
+              for (var hi = 0; hi < Math.min(10, frame.length); hi++) {
+                hexHead += ('00' + frame[hi].toString(16)).slice(-2);
+              }
+              for (var ti = Math.max(0, frame.length - 10); ti < frame.length; ti++) {
+                hexTail += ('00' + frame[ti].toString(16)).slice(-2);
+              }
+              var lines = [];
+              lines.push('Enc: ' + hexHead + '...' + hexTail + ' (' + frame.length + 'B)');
+              if (rgDebug) {
+                lines.push('RawCandidates=' + rgDebug.rawCandidates + ' Crossed=' + rgDebug.crossedCandidates + ' Top=' + rgDebug.topCount);
+                if (rgDebug.bestPair) {
+                  lines.push('TL: (' + rgDebug.bestPair.tlCx.toFixed(1) + ',' + rgDebug.bestPair.tlCy.toFixed(1) + ') ms=' + rgDebug.bestPair.tlMs.toFixed(2));
+                  lines.push('BR: (' + rgDebug.bestPair.brCx.toFixed(1) + ',' + rgDebug.bestPair.brCy.toFixed(1) + ') ms=' + rgDebug.bestPair.brMs.toFixed(2));
+                  lines.push('msX=' + (rgDebug.msX ? rgDebug.msX.toFixed(2) : '?') + ' msY=' + (rgDebug.msY ? rgDebug.msY.toFixed(2) : '?'));
+                }
+                if (rgDebug.originX != null) {
+                  lines.push('Origin: (' + rgDebug.originX.toFixed(1) + ',' + rgDebug.originY.toFixed(1) + ') thresh=' + (rgDebug.binarizeThreshold ? rgDebug.binarizeThreshold.toFixed(0) : '?'));
+                  lines.push('H-timing: ' + (rgDebug.hTimingRate ? (rgDebug.hTimingRate * 100).toFixed(1) + '%' : '?'));
+                }
+                lines.push('Error: ' + (rgDebug.error || rgDebug.decodeError || 'unknown'));
+              } else {
+                lines.push('Error: RawGrid.decode returned null (no debug)');
+              }
+              diag.innerHTML = lines.join('<br>');
               diag.style.color = '#f44336';
             } else {
               diag.innerHTML = 'DIAG FAIL: jsQR could not decode QR from canvas';
