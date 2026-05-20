@@ -90,8 +90,8 @@ video { display: block; width: 100%; }
     <div class="mode-selector" id="receiverMode" style="display:flex;gap:4px;background:#1a1a1a;border-radius:6px;padding:3px;margin-bottom:8px;border:1px solid #333;">
       <button class="mode-btn" data-mode="camera" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Camera</button>
       <button class="mode-btn" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Screen-QR</button>
-      <button class="mode-btn active" data-mode="rawgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">RawGrid</button>
-      <button class="mode-btn" data-mode="colorgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">ColorGrid</button>
+      <button class="mode-btn" data-mode="rawgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">RawGrid</button>
+      <button class="mode-btn active" data-mode="colorgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">ColorGrid</button>
     </div>
     <button class="btn btn-primary" id="btnStart">Start Screen Capture</button>
   </div>
@@ -158,12 +158,12 @@ video { display: block; width: 100%; }
   var scanning = false;
   var scanTimer = null;
   var completeFile = null;
-  var receiverMode = 'rawgrid';
+  var receiverMode = 'colorgrid';
   function isGridMode() { return receiverMode === 'rawgrid' || receiverMode === 'colorgrid'; }
   function gridDecode(pixels, w, h) { return receiverMode === 'colorgrid' ? ColorGrid.decode(pixels, w, h) : RawGrid.decode(pixels, w, h); }
   function gridLocate(pixels, w, h) { return receiverMode === 'colorgrid' ? ColorGrid.locateFinders(pixels, w, h) : RawGrid.locateFinders(pixels, w, h); }
   function gridDebug() { return receiverMode === 'colorgrid' ? ColorGrid.getLastDebug() : RawGrid.getLastDebug(); }
-  btnStart.textContent = 'Start RawGrid';
+  btnStart.textContent = 'Start ColorGrid';
   var firstFrameTime = null;
   var transferFileSize = null;
 

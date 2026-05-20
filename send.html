@@ -98,13 +98,14 @@ input[type=file] { display: none; }
         <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
           <button class="mode-btn" data-mode="camera">Camera</button>
           <button class="mode-btn" data-mode="screen">Screen-QR</button>
-          <button class="mode-btn active" data-mode="rawgrid">RawGrid</button>
-          <button class="mode-btn" data-mode="colorgrid">ColorGrid</button>
+          <button class="mode-btn" data-mode="rawgrid">RawGrid</button>
+          <button class="mode-btn active" data-mode="colorgrid">ColorGrid</button>
         </div>
       </div>
       <div class="setting-row">
         <label>Frame interval</label>
         <select id="optInterval">
+          <option value="25">25 ms</option>
           <option value="33">33 ms</option>
           <option value="50">50 ms</option>
           <option value="66">66 ms</option>
@@ -254,13 +255,13 @@ input[type=file] { display: none; }
 
   settingsToggle.addEventListener('click', function() { settingsBody.classList.toggle('open'); });
 
-  var senderMode = 'rawgrid';
+  var senderMode = 'colorgrid';
 
   var modeDefaults = {
-    camera:  { interval: 150, qrVersion: 10, fec: '5,1' },
-    screen:  { interval: 80,  qrVersion: 15, fec: '7,3' },
+    camera:    { interval: 150, qrVersion: 10, fec: '5,1' },
+    screen:    { interval: 80,  qrVersion: 15, fec: '7,3' },
     rawgrid:   { interval: 33,  qrVersion: 0,  fec: '4,1' },
-    colorgrid: { interval: 33,  qrVersion: 0,  fec: '4,1' }
+    colorgrid: { interval: 25,  qrVersion: 0,  fec: '5,2' }
   };
 
   function applyModeDefaults(mode) {
@@ -276,7 +277,7 @@ input[type=file] { display: none; }
     document.getElementById('optECLevel').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
   }
 
-  applyModeDefaults('rawgrid');
+  applyModeDefaults('colorgrid');
 
   document.getElementById('senderMode').addEventListener('click', function(e) {
     if (!e.target.classList.contains('mode-btn')) return;
