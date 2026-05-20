@@ -525,10 +525,33 @@ input[type=file] { display: none; }
               }
             }
             if (recovered) {
-              var match = recovered.length === frame.length;
-              for (var bi = 0; bi < frame.length && match; bi++) {
-                if (frame[bi] !== recovered[bi]) match = false;
+              var innerSkip = false;
+              // Grid modes: apply inner FEC correction before comparing
+              if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
+                var sc = senderMode === 'colorgrid' ? ColorGrid.dataCells() : RawGrid.dataCells();
+                var innerResult = FrameProtocol.decodeInnerFEC(recovered, sc);
+                if (!innerResult) {
+                  selfTestFail++;
+                  var hexBits = '';
+                  for (var hi2 = 0; hi2 < Math.min(8, recovered.length); hi2++) {
+                    hexBits += ('00' + recovered[hi2].toString(16)).slice(-2);
+                  }
+                  selfTestFailLog.push('#' + (selfTestOk + selfTestFail) + ' UNCORRECTABLE ' + hexBits + '...');
+                  innerSkip = true;
+                } else {
+                  var reenc = FrameProtocol.encodeInnerFEC(innerResult.data, sc);
+                  if (reenc) {
+                    var paddedReenc = new Uint8Array(sc);
+                    paddedReenc.set(reenc);
+                    recovered = paddedReenc;
+                  }
+                }
               }
+              if (!innerSkip) {
+                var match = recovered.length === frame.length;
+                for (var bi = 0; bi < frame.length && match; bi++) {
+                  if (frame[bi] !== recovered[bi]) match = false;
+                }
               if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
                 if (match) {
                   selfTestOk++;
@@ -570,6 +593,7 @@ input[type=file] { display: none; }
                   }
                 }
               }
+              } // close if (!innerSkip)
             } else if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
               // Decode returned null — accumulate failure
               selfTestFail++;

@@ -413,7 +413,17 @@ video { display: block; width: 100%; }
 
           var frameBytes = new Uint8Array(qrData.binaryData);
 
-          var result = Receiver.ingestFrameBinary(frameBytes);
+          // Inner FEC decode for grid modes
+          var innerOk = true;
+          if (isGridMode()) {
+            var gridCap = receiverMode === 'colorgrid' ? ColorGrid.dataCells() : RawGrid.dataCells();
+            var decoded = FrameProtocol.decodeInnerFEC(frameBytes, gridCap);
+            if (!decoded) innerOk = false;
+            else frameBytes = decoded.data;
+          }
+
+          if (innerOk) {
+            var result = Receiver.ingestFrameBinary(frameBytes);
 
           var ingestResult = result.status;
           if (result.status === 'new') {
@@ -442,6 +452,7 @@ video { display: block; width: 100%; }
             rgEl.textContent = modeLabel + ': decoded ' + frameBytes.length + 'B | ingest: ' + ingestResult;
             rgEl.style.color = ingestResult === 'new' ? '#4caf50' : ingestResult === 'bad' ? '#f44336' : '#ff9800';
           }
+          } // close if (innerOk)
         } else if (qrData) {
           qrDetected++;
         }

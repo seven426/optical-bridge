@@ -14,7 +14,7 @@ Air-gap file transfer via screen-to-camera optical channel using QR codes.
 
 - **Pure offline** — two HTML files, zero build step, vendored JS only
 - **Dual receive mode** — camera (phone/laptop) or screen capture (capture card / display sharing)
-- **Forward error correction** — Reed-Solomon erasure coding recovers lost frames
+- **Two-layer forward error correction** — inner RS corrects per-frame bit errors; outer RS recovers lost frames (erasures)
 - **Interleaved frame order** — Fisher-Yates shuffle per round distributes burst losses across blocks
 - **Two-round protocol** — full broadcast then selective retransmission of missing frames
 - **Raw binary QR encoding** — frames travel as Latin-1 bytes in QR byte mode, no Base64 overhead
@@ -98,6 +98,54 @@ Higher QR versions increase payload but reduce clock rate due to encoding/decodi
 | K=7, N=3 | 43% | 10 | 3 of 10 |
 
 Higher redundancy = more frames to send but higher tolerance to frame loss.
+
+### Inner FEC (frame-level error correction)
+
+Video capture cards occasionally introduce bit errors during frame decoding — a few wrong cells in the grid produce a partially corrupted frame. Without per-frame validation, these corrupted frames are treated as valid and fed into the outer Reed-Solomon decoder, producing garbage output.
+
+**Solution:** Each frame carries its own inner Reed-Solomon code. Bit errors are corrected in-place; frames with errors exceeding the correction limit are discarded and handled as erasures by the outer FEC.
+
+#### Frame format
+
+RawGrid (1213 B capacity):
+
+```
+Per block:  [236B data] + [6B RS parity]  →  RS(242, 236), t=3, GF(256)
+Per frame:  5 blocks
+Total:      5 × 242 = 1210 B (3 B padding)
+
+Frame data (1180 B):
+  [20B header] + [1160B payload]
+  ↑ both protected by inner RS
+```
+
+> Block size limited to ≤255 because α has order 255 in GF(256). Beyond 255, Chien search produces ambiguous error positions.
+
+ColorGrid (3639 B capacity) uses the same RS(242,236) block scheme, scaled proportionally.
+
+#### Decoder flow
+
+```
+syndrome = S(p block)
+  ↓
+S == 0  →  clean, skip
+S != 0  →  Berlekamp-Massey → Chien search → Forney
+              ↓                    ↓
+          errors ≤ t            errors > t
+              ↓                    ↓
+          correct in-place      mark frame bad (erasure)
+```
+
+Syndrome computation is O(p×n). For clean frames (~95%+ of captures), the decoder stops after syndrome check without running the expensive BM/Chien/Forney pipeline.
+
+#### Parameters
+
+| Grid | Capacity | Blocks | Block RS | t | Payload | Payload change | Overhead |
+|------|----------|--------|----------|---|---------|----------------|----------|
+| RawGrid | 1213 B | 5 | RS(242,236) | 3 | 1160 B | -33 B | 2.7% |
+| ColorGrid | 3639 B | 15 | RS(242,236) | 3 | 3520 B | -99 B | 2.7% |
+
+> RS(242, 236) corrects up to 3 byte errors per block, detects all errors up to 6 bytes (100%), and has theoretical miss probability ~1/256⁶ ≈ 3.5×10⁻¹⁵ for larger errors. Block size 242 ≤ 255 avoids α-period ambiguity in GF(256).
 
 ## Limitations
 
