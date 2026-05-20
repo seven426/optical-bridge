@@ -87,7 +87,21 @@ optical-bridge/
 - Effective (after FEC): **~14 KB/s**
 - 1 MB file: ~70 seconds
 
-Higher QR versions increase payload but reduce clock rate due to encoding/decoding cost. Choose based on the channel quality.
+### RawGrid mode (33ms, K=4,N=1)
+- Payload per frame: 1160 B (after inner FEC)
+- Inner FEC: RS(242,236) × 5 blocks, corrects ≤15 byte errors/frame
+- Raw throughput: ~35.2 KB/s
+- Effective (after FEC): **~28 KB/s**
+- 1 MB file: ~36 seconds
+
+### ColorGrid mode (25ms, K=5,N=2)
+- Payload per frame: 3520 B (after inner FEC)
+- Inner FEC: RS(242,236) × 15 blocks, corrects ≤45 byte errors/frame
+- Raw throughput: ~141 KB/s
+- Effective (after FEC): **~100 KB/s**
+- 1 MB file: ~10 seconds
+
+Higher QR versions / grid density increase payload but reduce clock rate due to encoding/decoding cost. Choose based on the channel quality.
 
 ### FEC redundancy
 
@@ -129,14 +143,14 @@ ColorGrid (3639 B capacity) uses the same RS(242,236) block scheme, scaled propo
 syndrome = S(p block)
   ↓
 S == 0  →  clean, skip
-S != 0  →  Berlekamp-Massey → Chien search → Forney
+S != 0  →  Peterson direct solver → Chien search → Forney
               ↓                    ↓
           errors ≤ t            errors > t
               ↓                    ↓
           correct in-place      mark frame bad (erasure)
 ```
 
-Syndrome computation is O(p×n). For clean frames (~95%+ of captures), the decoder stops after syndrome check without running the expensive BM/Chien/Forney pipeline.
+Syndrome computation is O(p×n). For clean frames (~95%+ of captures), the decoder stops after syndrome check (all-zero) without running the correction pipeline. Peterson solves a v×v linear system (v ≤ t = 3) over GF(256), then Chien search locates errors and Forney computes correction values.
 
 #### Parameters
 
