@@ -400,6 +400,7 @@ input[type=file] { display: none; }
     elapsedTimer = null;
     qrCode = null;
     qrWrapper.innerHTML = '';
+    window._gridCanvas = null;
     fileInput.value = '';
     showStage(1);
   }
@@ -481,9 +482,10 @@ input[type=file] { display: none; }
 
       if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
         var cellPx = state.cellPx || 6;
-        var gridCanvas = senderMode === 'colorgrid' ? ColorGrid.render(frame, cellPx) : RawGrid.render(frame, cellPx);
-        qrWrapper.innerHTML = '';
-        qrWrapper.appendChild(gridCanvas);
+        var gridCanvas = window._gridCanvas;
+        if (!gridCanvas) { gridCanvas = document.createElement('canvas'); qrWrapper.appendChild(gridCanvas); window._gridCanvas = gridCanvas; }
+        if (senderMode === 'colorgrid') ColorGrid.render(frame, cellPx, gridCanvas);
+        else RawGrid.render(frame, cellPx, gridCanvas);
       } else {
         qrCode.makeCode(binary);
       }
