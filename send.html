@@ -17,6 +17,13 @@ header p { font-size: 12px; color: #888; margin-top: 4px; }
 
 .stage { display: none; width: 100%; max-width: 640px; padding: 20px; }
 .stage.active { display: block; }
+.stage-wide { display: none; width: 100%; max-width: 100%; padding: 12px 20px; }
+.stage-wide.active { display: flex; gap: 16px; align-items: flex-start; height: calc(100vh - 60px); }
+.stage-left { flex: 0 0 320px; display: flex; flex-direction: column; gap: 8px; max-height: 100%; }
+.stage-right { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-width: 0; }
+.stage-right .qr-container { width: 100%; }
+.stage-right .qr-wrapper { width: 100%; padding: 8px; }
+.stage-right .qr-wrapper canvas { max-width: 100%; height: auto; }
 
 .drop-zone {
   border: 2px dashed #bbb; border-radius: 12px;
@@ -75,6 +82,17 @@ input[type=file] { display: none; }
 .mode-btn.active { background: #e0e0e0; color: #222; }
 .select-input { width: 100%; padding: 8px 12px; background: #fff; border: 1px solid #ccc; border-radius: 6px; color: #222; font-family: monospace; font-size: 13px; margin-bottom: 8px; }
 .select-info { font-size: 11px; color: #888; margin-bottom: 8px; }
+
+.block-grid-wrap { margin-top: 4px; display: flex; flex-direction: column; }
+.block-grid-canvas-wrap { overflow-y: auto; }
+.block-grid-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.block-grid-back { padding: 3px 10px; background: #eee; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; cursor: pointer; color: #555; }
+.block-grid-back:hover { background: #ddd; }
+.block-grid-info { flex: 1; font-size: 11px; color: #888; }
+.block-grid-actions { display: flex; gap: 4px; }
+.block-grid-act { padding: 3px 10px; background: #eee; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; cursor: pointer; color: #555; }
+.block-grid-act:hover { background: #ddd; }
+#blockGridCanvas { display: block; border: 1px solid #e0e0e0; border-radius: 4px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -157,33 +175,52 @@ input[type=file] { display: none; }
   <button class="btn" style="background:#999;color:#fff;" id="btnBack">Back</button>
 </div>
 
-<div id="stage3" class="stage">
-  <div class="mode-selector" id="modeSelector">
-    <button class="mode-btn active" data-mode="all">All frames</button>
-    <button class="mode-btn" data-mode="select">Frames</button>
-      <button class="mode-btn" data-mode="blocks">Blocks</button>
+<div id="stage3" class="stage-wide">
+  <div class="stage-left">
+    <div style="margin-bottom:4px;">
+      <div style="font-size:16px;font-weight:600;">OpticalBridge — Send</div>
+      <div id="shaDisplay" style="font-size:10px;word-break:break-all;color:#888;font-family:monospace;margin-top:4px;"></div>
     </div>
-  <input class="select-input" id="selectInput" placeholder="Frame range: 42,87,120-125" style="display:none;">
-  <div class="select-info" id="selectInfo" style="display:none;"></div>
-  <input class="select-input" id="blockInput" placeholder="Block range: 0,3-5" style="display:none;">
-  <div class="select-info" id="blockInfo" style="display:none;"></div>
-  <div class="qr-container">
-    <div id="shaDisplay" style="font-size:10px;word-break:break-all;color:#888;text-align:center;margin-bottom:4px;font-family:monospace;"></div>
-    <div class="qr-wrapper" id="qrWrapper"></div>
+    <div class="mode-selector" id="modeSelector">
+      <button class="mode-btn" data-mode="select">Frames</button>
+      <button class="mode-btn active" data-mode="blocks">Blocks</button>
+    </div>
+    <input class="select-input" id="selectInput" placeholder="Frame range: 42,87,120-125" style="display:none;">
+    <div class="select-info" id="selectInfo" style="display:none;"></div>
+    <input class="select-input" id="blockInput" placeholder="Block range: 0,3-5" style="display:none;">
+    <div class="select-info" id="blockInfo" style="display:none;"></div>
+    <div class="block-grid-wrap" id="blockGridWrap" style="display:none;">
+      <div class="block-grid-toolbar">
+        <button class="block-grid-back" id="blockGridBack" style="display:none;">&larr; Back</button>
+        <span class="block-grid-info" id="blockGridInfo">Selected: 0 / 0</span>
+        <div class="block-grid-actions">
+          <button class="block-grid-act" id="blockGridAll">All</button>
+          <button class="block-grid-act" id="blockGridInv">Invert</button>
+        </div>
+      </div>
+      <div class="block-grid-canvas-wrap" id="blockGridCanvasWrap">
+        <canvas id="blockGridCanvas" style="width:100%;"></canvas>
+      </div>
+    </div>
     <div class="stats">
-      <div class="stat"><div class="value" id="statFrame">-</div><div class="label">Frame</div></div>
-      <div class="stat"><div class="value" id="statProgress">-</div><div class="label">Progress</div></div>
-      <div class="stat"><div class="value" id="statRound">0</div><div class="label">Round</div></div>
+      <div class="stat"><div class="value" id="statTotal">-</div><div class="label">Total</div></div>
+      <div class="stat"><div class="value" id="statSent">0</div><div class="label">Sent</div></div>
+      <div class="stat"><div class="value" id="statFPS">0.0</div><div class="label">FPS</div></div>
       <div class="stat"><div class="value" id="statElapsed">00:00</div><div class="label">Elapsed</div></div>
     </div>
     <div class="controls">
       <button class="btn btn-pause" id="btnPause">Pause</button>
       <button class="btn btn-stop" id="btnStop">Stop</button>
-      <label style="margin-left:12px;font-size:12px;color:#888;cursor:pointer;user-select:none;">
-        <input type="checkbox" id="chkSelfTest" style="vertical-align:middle;margin-right:4px;">Self-test
-      </label>
     </div>
-    <div id="diag" style="margin-top:12px;padding:8px;background:#f5f5f5;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:left;display:none;max-height:300px;overflow-y:auto;word-break:break-all;"></div>
+    <label style="font-size:12px;color:#888;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="chkSelfTest" style="vertical-align:middle;margin-right:4px;">Self-test
+    </label>
+    <div id="diag" style="padding:8px;background:#f5f5f5;border-radius:6px;font-family:monospace;font-size:11px;color:#888;text-align:left;display:none;max-height:200px;overflow-y:auto;word-break:break-all;"></div>
+  </div>
+  <div class="stage-right">
+    <div class="qr-container">
+      <div class="qr-wrapper" id="qrWrapper"></div>
+    </div>
   </div>
 </div>
 
@@ -220,9 +257,9 @@ input[type=file] { display: none; }
 
   var timer = null;
   var paused = false;
-  var roundCount = 0;
   var cycleFrameIdx = 0;
   var elapsedSec = 0;
+  var totalFramesSent = 0;
   var elapsedTimer = null;
   var cycleFrames = null;
   var activeInterval = 150;
@@ -233,10 +270,13 @@ input[type=file] { display: none; }
   var selfTestFailLog = [];
   var qrCode = null;
 
+  var pageHeader = document.querySelector('header');
+
   function showStage(n) {
     stage1.classList.toggle('active', n === 1);
     stage2.classList.toggle('active', n === 2);
     stage3.classList.toggle('active', n === 3);
+    if (pageHeader) pageHeader.style.display = n === 3 ? 'none' : '';
   }
 
   dropZone.addEventListener('click', function() { fileInput.click(); });
@@ -338,19 +378,16 @@ input[type=file] { display: none; }
       selectInfo.style.display = 'block';
       blockInput.style.display = 'none';
       blockInfo.style.display = 'none';
+      blockGridWrap.style.display = 'none';
       Sender.setSelectMode(new Set());
-    } else if (mode === 'blocks') {
-      selectInput.style.display = 'none';
-      selectInfo.style.display = 'none';
-      blockInput.style.display = 'block';
-      blockInfo.style.display = 'block';
-      Sender.setBlockMode(new Set());
     } else {
       selectInput.style.display = 'none';
       selectInfo.style.display = 'none';
       blockInput.style.display = 'none';
       blockInfo.style.display = 'none';
-      Sender.setAllMode();
+      blockGridWrap.style.display = '';
+      initBlockGrid();
+      updateBlockGridInfo();
     }
     cycleFrames = Sender.getCycleFrames();
     cycleFrameIdx = 0;
@@ -377,10 +414,393 @@ input[type=file] { display: none; }
     blockInfo.textContent = blkSet.size + ' blocks selected';
   });
 
+  // === Block Grid ===
+  var blockGridCanvas = document.getElementById('blockGridCanvas');
+  var blockGridCtx = blockGridCanvas.getContext('2d');
+  var blockGridWrap = document.getElementById('blockGridWrap');
+  var blockGridBack = document.getElementById('blockGridBack');
+  var blockGridInfo = document.getElementById('blockGridInfo');
+  var blockGridAll = document.getElementById('blockGridAll');
+  var blockGridInv = document.getElementById('blockGridInv');
+
+  var blockGrid = {
+    selected: null,
+    currentGroup: null,
+    hover: null,
+    totalBlocks: 0,
+    groupSize: 100,
+    cellW: 0, cellH: 0, gap: 3, cols: 4,
+    dpr: 1
+  };
+
+  function initBlockGrid() {
+    var state = Sender.getState();
+    if (!state || !state.totalFECBlocks) return;
+    blockGrid.totalBlocks = state.totalFECBlocks;
+    blockGrid.selected = new Set();
+    for (var i = 0; i < blockGrid.totalBlocks; i++) blockGrid.selected.add(i);
+    blockGrid.currentGroup = null;
+    blockGrid.hover = null;
+    applyBlockSelection();
+    resizeBlockGrid();
+    drawBlockGrid();
+  }
+
+  function resizeBlockGrid() {
+    var dpr = window.devicePixelRatio || 1;
+    blockGrid.dpr = dpr;
+    var w = blockGridWrap.clientWidth - 2;
+    var gap = 3;
+    var cols = Math.max(3, Math.floor((w + gap) / 75));
+    var cellW = Math.floor((w - (cols + 1) * gap) / cols);
+    var cellH = Math.floor(cellW * 0.6);
+    blockGrid.gap = gap;
+    blockGrid.cellW = cellW;
+    blockGrid.cellH = cellH;
+    blockGrid.cols = cols;
+
+    var canvasH;
+    if (blockGrid.currentGroup === null) {
+      var groups = Math.ceil(blockGrid.totalBlocks / blockGrid.groupSize);
+      var rows = Math.ceil(groups / blockGrid.cols);
+      canvasH = Math.max(60, rows * (cellH + gap) + gap);
+    } else {
+      var sc = Math.floor((w - 9) / 10);
+      canvasH = 10 * sc + 9;
+    }
+    // Canvas area fixed to second-level 10×10 size; first level scrolls within
+    var blockGridCanvasWrap = document.getElementById('blockGridCanvasWrap');
+    if (blockGridCanvasWrap) {
+      var sc2 = Math.floor((w - 9) / 10);
+      blockGridCanvasWrap.style.maxHeight = (10 * sc2 + 9) + 'px';
+    }
+
+    blockGridCanvas.width = Math.floor(w * dpr);
+    blockGridCanvas.height = Math.floor(canvasH * dpr);
+    blockGridCanvas.style.height = canvasH + 'px';
+  }
+
+  function drawBlockGrid() {
+    var ctx = blockGridCtx;
+    var dpr = blockGrid.dpr;
+    var w = blockGridCanvas.width / dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, blockGridCanvas.height / dpr);
+    if (blockGrid.currentGroup === null) {
+      drawTopLevel(ctx, w);
+    } else {
+      drawSecondLevel(ctx, w);
+    }
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  function drawTopLevel(ctx, w) {
+    var gs = blockGrid.groupSize;
+    var groups = Math.ceil(blockGrid.totalBlocks / gs);
+    var cw = blockGrid.cellW, ch = blockGrid.cellH, gap = blockGrid.gap;
+    var cols = blockGrid.cols;
+    var rr = 5; // corner radius
+
+    for (var g = 0; g < groups; g++) {
+      var row = Math.floor(g / cols);
+      var col = g % cols;
+      var x = gap + col * (cw + gap);
+      var y = gap + row * (ch + gap);
+      var start = g * gs;
+      var end = Math.min(start + gs - 1, blockGrid.totalBlocks - 1);
+
+      var selCount = 0;
+      for (var b = start; b <= end; b++) { if (blockGrid.selected.has(b)) selCount++; }
+      var total = end - start + 1;
+
+      ctx.save();
+      roundRect(ctx, x, y, cw, ch, rr);
+      ctx.clip();
+
+      if (selCount === total) {
+        ctx.fillStyle = '#4a9eff';
+        ctx.fillRect(x, y, cw, ch);
+      } else if (selCount === 0) {
+        ctx.fillStyle = '#e8e8e8';
+        ctx.fillRect(x, y, cw, ch);
+      } else {
+        ctx.fillStyle = '#e8e8e8';
+        ctx.fillRect(x, y, cw, ch);
+        var ratio = selCount / total;
+        ctx.fillStyle = '#4a9eff';
+        ctx.fillRect(x, y, cw, ch * ratio);
+      }
+      ctx.restore();
+
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 1;
+      roundRect(ctx, x, y, cw, ch, rr);
+      ctx.stroke();
+
+      var isHover = blockGrid.hover && blockGrid.hover.row === row && blockGrid.hover.col === col;
+      if (isHover) {
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 2;
+        roundRect(ctx, x + 1, y + 1, cw - 2, ch - 2, rr - 1);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+
+        var xr = 14;
+        var xx = x + cw - xr - 4;
+        var xy = y + (ch - xr) / 2;
+        ctx.fillStyle = blockGrid.hover.onX ? '#e53935' : '#999';
+        ctx.beginPath();
+        ctx.arc(xx + xr/2, xy + xr/2, xr/2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✕', xx + xr/2, xy + xr/2);
+      }
+
+      ctx.fillStyle = selCount === 0 ? '#666' : '#fff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(start + '-' + end, x + cw/2, y + ch/2);
+    }
+  }
+
+  function drawSecondLevel(ctx, w) {
+    var group = blockGrid.currentGroup;
+    var start = group * blockGrid.groupSize;
+    var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+    var count = end - start + 1;
+
+    var sc = Math.floor((w - 9) / 10);
+    var gap = 1;
+    var rr = Math.max(2, Math.floor(sc * 0.15));
+
+    for (var i = 0; i < count; i++) {
+      var row = Math.floor(i / 10);
+      var col = i % 10;
+      var x = col * (sc + gap);
+      var y = row * (sc + gap);
+      var bid = start + i;
+
+      ctx.fillStyle = blockGrid.selected.has(bid) ? '#4a9eff' : '#e8e8e8';
+      roundRect(ctx, x, y, sc, sc, rr);
+      ctx.fill();
+
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 0.5;
+      roundRect(ctx, x, y, sc, sc, rr);
+      ctx.stroke();
+
+      var isHover = blockGrid.hover && blockGrid.hover.row === row && blockGrid.hover.col === col;
+      if (isHover) {
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, x + 0.5, y + 0.5, sc - 1, sc - 1, Math.max(1, rr - 0.5));
+        ctx.stroke();
+      }
+
+      if (sc >= 18 && i % 5 === 0) {
+        ctx.fillStyle = blockGrid.selected.has(bid) ? '#fff' : '#666';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(bid), x + sc/2, y + sc/2);
+      }
+    }
+  }
+
+  function getBlockGridCell(ex, ey) {
+    var w = blockGridCanvas.width / blockGrid.dpr;
+
+    if (blockGrid.currentGroup === null) {
+      var cw = blockGrid.cellW, ch = blockGrid.cellH, gap = blockGrid.gap;
+      var cols = blockGrid.cols;
+      var groups = Math.ceil(blockGrid.totalBlocks / blockGrid.groupSize);
+      for (var g = 0; g < groups; g++) {
+        var row = Math.floor(g / cols);
+        var c = g % cols;
+        var cx = gap + c * (cw + gap);
+        var cy = gap + row * (ch + gap);
+        if (ex >= cx && ex <= cx + cw && ey >= cy && ey <= cy + ch) {
+          var onX = false;
+          var xr = 14;
+          var xx = cx + cw - xr - 4;
+          var xy = cy + (ch - xr) / 2;
+          var dx = ex - (xx + xr/2);
+          var dy = ey - (xy + xr/2);
+          if (Math.sqrt(dx*dx + dy*dy) < xr/2 + 2) onX = true;
+          return { group: g, row: row, col: c, onX: onX };
+        }
+      }
+    } else {
+      var sc = Math.floor((w - 9) / 10);
+      var gap = 1;
+      var col = Math.floor(ex / (sc + gap));
+      var row = Math.floor(ey / (sc + gap));
+      var start = blockGrid.currentGroup * blockGrid.groupSize;
+      var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+      var idx = row * 10 + col;
+      if (idx >= 0 && idx < (end - start + 1)) {
+        var cx = col * (sc + gap);
+        var cy = row * (sc + gap);
+        if (ex >= cx && ex <= cx + sc && ey >= cy && ey <= cy + sc) {
+          return { row: row, col: col, onX: false };
+        }
+      }
+    }
+    return null;
+  }
+
+  function handleBlockGridClick(e) {
+    var rect = blockGridCanvas.getBoundingClientRect();
+    var ex = e.clientX - rect.left;
+    var ey = e.clientY - rect.top;
+    var cell = getBlockGridCell(ex, ey);
+    if (!cell) return;
+
+    if (blockGrid.currentGroup === null) {
+      if (cell.onX) {
+        var start = cell.group * blockGrid.groupSize;
+        var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+        for (var b = start; b <= end; b++) blockGrid.selected.delete(b);
+        applyBlockSelection();
+        drawBlockGrid();
+        updateBlockGridInfo();
+      } else {
+        blockGrid.currentGroup = cell.group;
+        blockGridBack.style.display = '';
+        resizeBlockGrid();
+        drawBlockGrid();
+        updateBlockGridInfo();
+      }
+    } else {
+      var bid = blockGrid.currentGroup * blockGrid.groupSize + cell.row * 10 + cell.col;
+      if (bid < blockGrid.totalBlocks) {
+        if (blockGrid.selected.has(bid)) {
+          blockGrid.selected.delete(bid);
+        } else {
+          blockGrid.selected.add(bid);
+        }
+        applyBlockSelection();
+        drawBlockGrid();
+        updateBlockGridInfo();
+      }
+    }
+  }
+
+  function handleBlockGridMove(e) {
+    var rect = blockGridCanvas.getBoundingClientRect();
+    var ex = e.clientX - rect.left;
+    var ey = e.clientY - rect.top;
+    var cell = getBlockGridCell(ex, ey);
+    if (!cell) {
+      if (blockGrid.hover) { blockGrid.hover = null; drawBlockGrid(); }
+      return;
+    }
+    var prev = blockGrid.hover;
+    if (!prev || prev.row !== cell.row || prev.col !== cell.col || prev.onX !== cell.onX) {
+      blockGrid.hover = cell;
+      blockGridCanvas.style.cursor = cell.onX ? 'pointer' : 'pointer';
+      drawBlockGrid();
+    }
+  }
+
+  function handleBlockGridLeave() {
+    if (blockGrid.hover) { blockGrid.hover = null; drawBlockGrid(); }
+  }
+
+  function applyBlockSelection() {
+    Sender.setBlockMode(blockGrid.selected);
+    cycleFrames = Sender.getCycleFrames();
+    cycleFrameIdx = 0;
+  }
+
+  function updateBlockGridInfo() {
+    blockGridInfo.textContent = 'Selected: ' + blockGrid.selected.size + ' / ' + blockGrid.totalBlocks;
+  }
+
+  blockGridCanvas.addEventListener('click', handleBlockGridClick);
+  blockGridCanvas.addEventListener('mousemove', handleBlockGridMove);
+  blockGridCanvas.addEventListener('mouseleave', handleBlockGridLeave);
+  blockGridCanvas.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    var touch = e.touches[0];
+    if (touch) {
+      handleBlockGridMove({ clientX: touch.clientX, clientY: touch.clientY });
+      handleBlockGridClick({ clientX: touch.clientX, clientY: touch.clientY });
+    }
+  }, { passive: false });
+
+  blockGridBack.addEventListener('click', function() {
+    blockGrid.currentGroup = null;
+    blockGridBack.style.display = 'none';
+    resizeBlockGrid();
+    drawBlockGrid();
+    updateBlockGridInfo();
+  });
+
+  blockGridAll.addEventListener('click', function() {
+    if (blockGrid.currentGroup !== null) {
+      var start = blockGrid.currentGroup * blockGrid.groupSize;
+      var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+      for (var b = start; b <= end; b++) blockGrid.selected.add(b);
+    } else {
+      for (var i = 0; i < blockGrid.totalBlocks; i++) blockGrid.selected.add(i);
+    }
+    applyBlockSelection();
+    drawBlockGrid();
+    updateBlockGridInfo();
+  });
+
+  blockGridInv.addEventListener('click', function() {
+    if (blockGrid.currentGroup !== null) {
+      var start = blockGrid.currentGroup * blockGrid.groupSize;
+      var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+      for (var b = start; b <= end; b++) {
+        if (blockGrid.selected.has(b)) blockGrid.selected.delete(b);
+        else blockGrid.selected.add(b);
+      }
+    } else {
+      var all = new Set();
+      for (var i = 0; i < blockGrid.totalBlocks; i++) all.add(i);
+      for (var i = 0; i < blockGrid.totalBlocks; i++) {
+        if (blockGrid.selected.has(i)) all.delete(i);
+      }
+      blockGrid.selected = all;
+    }
+    applyBlockSelection();
+    drawBlockGrid();
+    updateBlockGridInfo();
+  });
+
+  window.addEventListener('resize', function() {
+    if (blockGridWrap.style.display !== 'none') {
+      resizeBlockGrid();
+      drawBlockGrid();
+    }
+  });
+
   function startTransmission() {
     cycleFrames = Sender.getCycleFrames();
     cycleFrameIdx = 0;
-    roundCount = 0;
+    totalFramesSent = 0;
     selfTestTick = 0;
     selfTestSkipCount = 0;
     selfTestOk = 0;
@@ -413,16 +833,36 @@ input[type=file] { display: none; }
   function startDisplay() {
     var state = Sender.getState();
     elapsedSec = 0;
+    totalFramesSent = 0;
     document.getElementById('shaDisplay').textContent = 'SHA-256: ' + state.sha256hex;
+    document.getElementById('statTotal').textContent = state.totalFrames;
+    document.getElementById('statFPS').textContent = '0.0';
     document.getElementById('statElapsed').textContent = '00:00';
 
     if (elapsedTimer) clearInterval(elapsedTimer);
     elapsedTimer = setInterval(function() {
+      if (paused) return;
       elapsedSec++;
       var m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
       var s = (elapsedSec % 60).toString().padStart(2, '0');
       document.getElementById('statElapsed').textContent = m + ':' + s;
+      if (elapsedSec > 0) {
+        document.getElementById('statFPS').textContent = (totalFramesSent / elapsedSec).toFixed(1);
+      }
     }, 1000);
+
+    // Default to blocks mode
+    var btns = modeSelector.querySelectorAll('.mode-btn');
+    for (var bi = 0; bi < btns.length; bi++) btns[bi].classList.remove('active');
+    var blocksBtn = modeSelector.querySelector('[data-mode="blocks"]');
+    if (blocksBtn) blocksBtn.classList.add('active');
+    selectInput.style.display = 'none';
+    selectInfo.style.display = 'none';
+    blockInput.style.display = 'none';
+    blockInfo.style.display = 'none';
+    blockGridWrap.style.display = '';
+    initBlockGrid();
+    updateBlockGridInfo();
 
     // Create QRCode renderer once, reuse via makeCode() for speed
     // Screen mode: grow QR with version so modules stay >=2px after 960px scan downscale
@@ -630,22 +1070,19 @@ input[type=file] { display: none; }
       }
       }
 
-      document.getElementById('statFrame').textContent = (cycleFrameIdx + 1) + '/' + cycleFrames.length;
-      document.getElementById('statProgress').textContent = Math.round(((cycleFrameIdx + 1) / cycleFrames.length) * 100) + '%';
-
+      totalFramesSent++;
+      document.getElementById('statSent').textContent = totalFramesSent;
       cycleFrameIdx++;
       if (cycleFrameIdx >= cycleFrames.length) {
         cycleFrameIdx = 0;
-        roundCount++;
-        document.getElementById('statRound').textContent = roundCount;
       }
     } catch (e) {
       console.error('showFrame error:', e);
+      totalFramesSent++;
+      document.getElementById('statSent').textContent = totalFramesSent;
       cycleFrameIdx++;
       if (cycleFrameIdx >= cycleFrames.length) {
         cycleFrameIdx = 0;
-        roundCount++;
-        document.getElementById('statRound').textContent = roundCount;
       }
     }
   }
