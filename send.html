@@ -115,8 +115,6 @@ input[type=file] { display: none; }
         <label>Mode</label>
         <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
           <button class="mode-btn" data-mode="camera">Camera</button>
-          <button class="mode-btn" data-mode="screen">Screen-QR</button>
-          <button class="mode-btn" data-mode="rawgrid">RawGrid</button>
           <button class="mode-btn active" data-mode="colorgrid">ColorGrid</button>
         </div>
       </div>
@@ -208,6 +206,21 @@ input[type=file] { display: none; }
       <div class="stat"><div class="value" id="statFPS">0.0</div><div class="label">FPS</div></div>
       <div class="stat"><div class="value" id="statElapsed">00:00</div><div class="label">Elapsed</div></div>
     </div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#888;margin-top:4px;">
+      <span>Interval:</span>
+      <select id="optIntervalLive" style="background:#fff;color:#222;border:1px solid #ccc;border-radius:4px;padding:2px 6px;font-size:12px;">
+        <option value="25">25 ms</option>
+        <option value="33" selected>33 ms</option>
+        <option value="50">50 ms</option>
+        <option value="66">66 ms</option>
+        <option value="80">80 ms</option>
+        <option value="100">100 ms</option>
+        <option value="150">150 ms</option>
+        <option value="200">200 ms</option>
+        <option value="300">300 ms</option>
+        <option value="500">500 ms</option>
+      </select>
+    </div>
     <div class="controls">
       <button class="btn btn-pause" id="btnPause">Pause</button>
       <button class="btn btn-stop" id="btnStop">Stop</button>
@@ -229,7 +242,6 @@ input[type=file] { display: none; }
 <script src="lib/reed-solomon.js"></script>
 <script src="lib/frame-range.js"></script>
 <script src="lib/sha256.js"></script>
-<script src="lib/rawgrid.js"></script>
 <script src="lib/colorgrid.js"></script>
 <script src="lib/sender.js"></script>
 <script src="lib/qrcode.js"></script>
@@ -260,6 +272,7 @@ input[type=file] { display: none; }
   var cycleFrameIdx = 0;
   var elapsedSec = 0;
   var totalFramesSent = 0;
+  var recentSendTimes = [];
   var elapsedTimer = null;
   var cycleFrames = null;
   var activeInterval = 150;
@@ -299,8 +312,6 @@ input[type=file] { display: none; }
 
   var modeDefaults = {
     camera:    { interval: 150, qrVersion: 10, fec: '5,1' },
-    screen:    { interval: 80,  qrVersion: 15, fec: '7,3' },
-    rawgrid:   { interval: 33,  qrVersion: 0,  fec: '4,1' },
     colorgrid: { interval: 25,  qrVersion: 0,  fec: '5,2' }
   };
 
@@ -310,11 +321,12 @@ input[type=file] { display: none; }
     document.getElementById('optInterval').value = String(d.interval);
     document.getElementById('optQRVersion').value = String(d.qrVersion);
     document.getElementById('optFEC').value = d.fec;
-    // Hide QR version and EC level selectors in rawgrid mode
-    var isGridMode = mode === 'rawgrid' || mode === 'colorgrid';
-    document.getElementById('optQRVersion').parentNode.style.display = isGridMode ? 'none' : '';
-    document.getElementById('optECLevel').parentNode.style.display = isGridMode ? 'none' : '';
-    document.getElementById('optECLevel').parentNode.style.display = mode === 'rawgrid' ? 'none' : '';
+    var isColorGrid = mode === 'colorgrid';
+    document.getElementById('optQRVersion').parentNode.style.display = isColorGrid ? 'none' : '';
+    document.getElementById('optECLevel').parentNode.style.display = isColorGrid ? 'none' : '';
+    // Sync live interval slider in stage3
+    var liveSel = document.getElementById('optIntervalLive');
+    if (liveSel) liveSel.value = String(d.interval);
   }
 
   applyModeDefaults('colorgrid');
@@ -328,7 +340,7 @@ input[type=file] { display: none; }
   });
 
   function getSettings() {
-    var qrVer = parseInt(document.getElementById('optQRVersion').value) || Sender.pickQRVersion(senderMode);
+    var qrVer = parseInt(document.getElementById('optQRVersion').value) || Sender.pickQRVersion();
     var fecParts = document.getElementById('optFEC').value.split(',');
     return {
       frameInterval: parseInt(document.getElementById('optInterval').value),
@@ -337,7 +349,7 @@ input[type=file] { display: none; }
       fecN: parseInt(fecParts[1]),
       ecLevel: document.getElementById('optECLevel').value,
       mode: senderMode,
-      cellPx: (senderMode === 'rawgrid' || senderMode === 'colorgrid') ? 6 : 0
+      cellPx: senderMode === 'colorgrid' ? 6 : 0
     };
   }
 
@@ -432,6 +444,7 @@ input[type=file] { display: none; }
     cellW: 0, cellH: 0, gap: 3, cols: 4,
     dpr: 1
   };
+  var blockGridMouseDown = null;
 
   function initBlockGrid() {
     var state = Sender.getState();
@@ -668,41 +681,63 @@ input[type=file] { display: none; }
     return null;
   }
 
-  function handleBlockGridClick(e) {
+  function handleBlockGridMouseDown(e) {
+    var rect = blockGridCanvas.getBoundingClientRect();
+    var ex = e.clientX - rect.left;
+    var ey = e.clientY - rect.top;
+    blockGridMouseDown = getBlockGridCell(ex, ey);
+  }
+
+  function handleBlockGridMouseUp(e) {
     var rect = blockGridCanvas.getBoundingClientRect();
     var ex = e.clientX - rect.left;
     var ey = e.clientY - rect.top;
     var cell = getBlockGridCell(ex, ey);
-    if (!cell) return;
+    if (!cell || !blockGridMouseDown) { blockGridMouseDown = null; return; }
 
     if (blockGrid.currentGroup === null) {
-      if (cell.onX) {
-        var start = cell.group * blockGrid.groupSize;
-        var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
-        for (var b = start; b <= end; b++) blockGrid.selected.delete(b);
-        applyBlockSelection();
-        drawBlockGrid();
-        updateBlockGridInfo();
-      } else {
-        blockGrid.currentGroup = cell.group;
-        blockGridBack.style.display = '';
-        resizeBlockGrid();
-        drawBlockGrid();
-        updateBlockGridInfo();
+      // Top level
+      if (blockGridMouseDown.group === cell.group) {
+        if (cell.onX) {
+          // Clicked X button — deselect group
+          var start = cell.group * blockGrid.groupSize;
+          var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+          for (var b = start; b <= end; b++) blockGrid.selected.delete(b);
+          applyBlockSelection();
+          drawBlockGrid();
+          updateBlockGridInfo();
+        } else {
+          // Enter second level
+          blockGrid.currentGroup = cell.group;
+          blockGridBack.style.display = '';
+          resizeBlockGrid();
+          drawBlockGrid();
+          updateBlockGridInfo();
+        }
       }
     } else {
-      var bid = blockGrid.currentGroup * blockGrid.groupSize + cell.row * 10 + cell.col;
-      if (bid < blockGrid.totalBlocks) {
-        if (blockGrid.selected.has(bid)) {
-          blockGrid.selected.delete(bid);
-        } else {
-          blockGrid.selected.add(bid);
+      // Second level: range toggle between mousedown and mouseup cells
+      var start = blockGrid.currentGroup * blockGrid.groupSize;
+      var end = Math.min(start + blockGrid.groupSize - 1, blockGrid.totalBlocks - 1);
+      var count = end - start + 1;
+      var row1 = Math.min(blockGridMouseDown.row, cell.row);
+      var row2 = Math.max(blockGridMouseDown.row, cell.row);
+      var col1 = Math.min(blockGridMouseDown.col, cell.col);
+      var col2 = Math.max(blockGridMouseDown.col, cell.col);
+      for (var r = row1; r <= row2; r++) {
+        for (var c = col1; c <= col2; c++) {
+          var idx = r * 10 + c;
+          if (idx < count) {
+            var bid = start + idx;
+            if (blockGrid.selected.has(bid)) blockGrid.selected.delete(bid);
+            else blockGrid.selected.add(bid);
+          }
         }
-        applyBlockSelection();
-        drawBlockGrid();
-        updateBlockGridInfo();
       }
+      drawBlockGrid();
+      updateBlockGridInfo();
     }
+    blockGridMouseDown = null;
   }
 
   function handleBlockGridMove(e) {
@@ -736,21 +771,32 @@ input[type=file] { display: none; }
     blockGridInfo.textContent = 'Selected: ' + blockGrid.selected.size + ' / ' + blockGrid.totalBlocks;
   }
 
-  blockGridCanvas.addEventListener('click', handleBlockGridClick);
+  blockGridCanvas.addEventListener('mousedown', handleBlockGridMouseDown);
+  blockGridCanvas.addEventListener('mouseup', handleBlockGridMouseUp);
   blockGridCanvas.addEventListener('mousemove', handleBlockGridMove);
-  blockGridCanvas.addEventListener('mouseleave', handleBlockGridLeave);
+  blockGridCanvas.addEventListener('mouseleave', function() {
+    blockGridMouseDown = null;
+    handleBlockGridLeave();
+  });
   blockGridCanvas.addEventListener('touchstart', function(e) {
     e.preventDefault();
     var touch = e.touches[0];
     if (touch) {
-      handleBlockGridMove({ clientX: touch.clientX, clientY: touch.clientY });
-      handleBlockGridClick({ clientX: touch.clientX, clientY: touch.clientY });
+      handleBlockGridMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
+    }
+  }, { passive: false });
+  blockGridCanvas.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    var touch = e.changedTouches[0];
+    if (touch) {
+      handleBlockGridMouseUp({ clientX: touch.clientX, clientY: touch.clientY });
     }
   }, { passive: false });
 
   blockGridBack.addEventListener('click', function() {
     blockGrid.currentGroup = null;
     blockGridBack.style.display = 'none';
+    applyBlockSelection();
     resizeBlockGrid();
     drawBlockGrid();
     updateBlockGridInfo();
@@ -763,8 +809,8 @@ input[type=file] { display: none; }
       for (var b = start; b <= end; b++) blockGrid.selected.add(b);
     } else {
       for (var i = 0; i < blockGrid.totalBlocks; i++) blockGrid.selected.add(i);
+      applyBlockSelection();
     }
-    applyBlockSelection();
     drawBlockGrid();
     updateBlockGridInfo();
   });
@@ -784,8 +830,8 @@ input[type=file] { display: none; }
         if (blockGrid.selected.has(i)) all.delete(i);
       }
       blockGrid.selected = all;
+      applyBlockSelection();
     }
-    applyBlockSelection();
     drawBlockGrid();
     updateBlockGridInfo();
   });
@@ -801,6 +847,7 @@ input[type=file] { display: none; }
     cycleFrames = Sender.getCycleFrames();
     cycleFrameIdx = 0;
     totalFramesSent = 0;
+    recentSendTimes = [];
     selfTestTick = 0;
     selfTestSkipCount = 0;
     selfTestOk = 0;
@@ -814,7 +861,7 @@ input[type=file] { display: none; }
   }
 
   function stopTransmission() {
-    if (timer) clearInterval(timer);
+    if (timer) clearTimeout(timer);
     if (elapsedTimer) clearInterval(elapsedTimer);
     timer = null;
     elapsedTimer = null;
@@ -828,16 +875,35 @@ input[type=file] { display: none; }
   function togglePause() {
     paused = !paused;
     btnPause.textContent = paused ? 'Resume' : 'Pause';
+    if (!paused) scheduleNextFrame();
+  }
+
+  function getCurrentInterval() {
+    var liveSel = document.getElementById('optIntervalLive');
+    return parseInt(liveSel ? liveSel.value : document.getElementById('optInterval').value) || 150;
+  }
+
+  function scheduleNextFrame() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function() {
+      if (!paused) showFrame();
+    }, getCurrentInterval());
   }
 
   function startDisplay() {
     var state = Sender.getState();
     elapsedSec = 0;
     totalFramesSent = 0;
+    recentSendTimes = [];
     document.getElementById('shaDisplay').textContent = 'SHA-256: ' + state.sha256hex;
-    document.getElementById('statTotal').textContent = state.totalFrames;
+    // Show total with metadata frame
+    var totalDisplay = state._totalWithMeta || state.totalFrames;
+    document.getElementById('statTotal').textContent = totalDisplay;
     document.getElementById('statFPS').textContent = '0.0';
     document.getElementById('statElapsed').textContent = '00:00';
+    // Sync live interval selector
+    var liveSel = document.getElementById('optIntervalLive');
+    if (liveSel) liveSel.value = String(state.intervalMs || getCurrentInterval());
 
     if (elapsedTimer) clearInterval(elapsedTimer);
     elapsedTimer = setInterval(function() {
@@ -846,9 +912,10 @@ input[type=file] { display: none; }
       var m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
       var s = (elapsedSec % 60).toString().padStart(2, '0');
       document.getElementById('statElapsed').textContent = m + ':' + s;
-      if (elapsedSec > 0) {
-        document.getElementById('statFPS').textContent = (totalFramesSent / elapsedSec).toFixed(1);
-      }
+      // Recent 5-second FPS
+      var now = Date.now(), cutoff = now - 5000;
+      while (recentSendTimes.length > 0 && recentSendTimes[0] < cutoff) recentSendTimes.shift();
+      document.getElementById('statFPS').textContent = (recentSendTimes.length / 5.0).toFixed(1);
     }, 1000);
 
     // Default to blocks mode
@@ -864,17 +931,13 @@ input[type=file] { display: none; }
     initBlockGrid();
     updateBlockGridInfo();
 
-    // Create QRCode renderer once, reuse via makeCode() for speed
-    // Screen mode: grow QR with version so modules stay >=2px after 960px scan downscale
     var qrSize;
-    if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
+    if (senderMode === 'colorgrid') {
       qrSize = Math.min(window.innerHeight - 40, 500);
       qrWrapper.innerHTML = '';
     } else {
       var modCount = 4 * (state.qrVersion || 10) + 17;
-      qrSize = senderMode === 'screen'
-        ? Math.max(480, Math.min(window.innerHeight - 40, Math.floor(modCount * 4)))
-        : Math.min(500, Math.floor(window.innerHeight * 0.65));
+      qrSize = Math.min(500, Math.floor(window.innerHeight * 0.65));
       qrWrapper.innerHTML = '';
       qrCode = new QRCode(qrWrapper, {
         text: 'placeholder',
@@ -887,14 +950,6 @@ input[type=file] { display: none; }
     }
 
     showFrame();
-    if (timer) clearInterval(timer);
-    var domInterval = parseInt(document.getElementById('optInterval').value);
-    activeInterval = domInterval || state.intervalMs;
-    document.getElementById('shaDisplay').textContent = 'SHA-256: ' + state.sha256hex +
-      '  [mode=' + senderMode + ' interval=' + activeInterval + 'ms dom=' + (domInterval || '?') + ']';
-    timer = setInterval(function() {
-      if (!paused) showFrame();
-    }, activeInterval);
   }
 
   function shuffleCycle() {
@@ -920,12 +975,11 @@ input[type=file] { display: none; }
         binary += String.fromCharCode(frame[i]);
       }
 
-      if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
+      if (senderMode === 'colorgrid') {
         var cellPx = state.cellPx || 6;
         var gridCanvas = window._gridCanvas;
         if (!gridCanvas) { gridCanvas = document.createElement('canvas'); qrWrapper.appendChild(gridCanvas); window._gridCanvas = gridCanvas; }
-        if (senderMode === 'colorgrid') ColorGrid.render(frame, cellPx, gridCanvas);
-        else RawGrid.render(frame, cellPx, gridCanvas);
+        ColorGrid.render(frame, cellPx, gridCanvas);
       } else {
         qrCode.makeCode(binary);
       }
@@ -939,7 +993,7 @@ input[type=file] { display: none; }
       }
       if (selfTestEnabled) {
         if (!selfTestSkipCount) {
-          selfTestSkipCount = (activeInterval < 80) ? 60 : ((senderMode === 'rawgrid' || senderMode === 'colorgrid') ? 1 : 1);
+          selfTestSkipCount = (activeInterval < 80) ? 60 : (senderMode === 'colorgrid' ? 1 : 1);
         }
         selfTestTick++;
         if (selfTestTick >= selfTestSkipCount) {
@@ -952,9 +1006,10 @@ input[type=file] { display: none; }
             var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
             var recovered = null;
             var rgDebug = null;
-            if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
-              recovered = senderMode === 'colorgrid' ? ColorGrid.decode(imgData.data, imgData.width, imgData.height) : RawGrid.decode(imgData.data, imgData.width, imgData.height);
-              rgDebug = senderMode === 'colorgrid' ? ColorGrid.getLastDebug() : RawGrid.getLastDebug();
+            if (senderMode === 'colorgrid') {
+              var decodeResult = ColorGrid.decode(imgData.data, imgData.width, imgData.height);
+              recovered = decodeResult ? decodeResult.data : null;
+              rgDebug = ColorGrid.getLastDebug();
             } else {
               var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
               if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
@@ -966,9 +1021,9 @@ input[type=file] { display: none; }
             }
             if (recovered) {
               var innerSkip = false;
-              // Grid modes: apply inner FEC correction before comparing
-              if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
-                var sc = senderMode === 'colorgrid' ? ColorGrid.dataCells() : RawGrid.dataCells();
+              // ColorGrid: apply inner FEC correction before comparing
+              if (senderMode === 'colorgrid') {
+                var sc = ColorGrid.dataCells();
                 var innerResult = FrameProtocol.decodeInnerFEC(recovered, sc);
                 if (!innerResult) {
                   selfTestFail++;
@@ -992,7 +1047,7 @@ input[type=file] { display: none; }
                 for (var bi = 0; bi < frame.length && match; bi++) {
                   if (frame[bi] !== recovered[bi]) match = false;
                 }
-              if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
+              if (senderMode === 'colorgrid') {
                 if (match) {
                   selfTestOk++;
                 } else {
@@ -1034,7 +1089,7 @@ input[type=file] { display: none; }
                 }
               }
               } // close if (!innerSkip)
-            } else if (senderMode === 'rawgrid' || senderMode === 'colorgrid') {
+            } else if (senderMode === 'colorgrid') {
               // Decode returned null — accumulate failure
               selfTestFail++;
               var hexHead = '', hexTail = '';
@@ -1071,19 +1126,23 @@ input[type=file] { display: none; }
       }
 
       totalFramesSent++;
+      recentSendTimes.push(Date.now());
       document.getElementById('statSent').textContent = totalFramesSent;
       cycleFrameIdx++;
       if (cycleFrameIdx >= cycleFrames.length) {
         cycleFrameIdx = 0;
       }
+      scheduleNextFrame();
     } catch (e) {
       console.error('showFrame error:', e);
       totalFramesSent++;
+      recentSendTimes.push(Date.now());
       document.getElementById('statSent').textContent = totalFramesSent;
       cycleFrameIdx++;
       if (cycleFrameIdx >= cycleFrames.length) {
         cycleFrameIdx = 0;
       }
+      scheduleNextFrame();
     }
   }
 

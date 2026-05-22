@@ -89,8 +89,6 @@ video { display: block; width: 100%; }
     </div>
     <div class="mode-selector" id="receiverMode" style="display:flex;gap:4px;background:#1a1a1a;border-radius:6px;padding:3px;margin-bottom:8px;border:1px solid #333;">
       <button class="mode-btn" data-mode="camera" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Camera</button>
-      <button class="mode-btn" data-mode="screen" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">Screen-QR</button>
-      <button class="mode-btn" data-mode="rawgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:transparent;color:#888;font-size:12px;cursor:pointer;">RawGrid</button>
       <button class="mode-btn active" data-mode="colorgrid" style="flex:1;padding:6px 12px;border:none;border-radius:4px;background:#555;color:#e0e0e0;font-size:12px;cursor:pointer;">ColorGrid</button>
     </div>
     <button class="btn btn-primary" id="btnStart">Start Screen Capture</button>
@@ -127,6 +125,12 @@ video { display: block; width: 100%; }
     <div class="missing-frames" id="missingBlocks" style="color:#ff9800;"></div>
   </div>
 
+  <div class="missing-section" id="qualitySection" style="display:none;">
+    <h3>Signal Quality</h3>
+    <div id="qualityStats" style="font-family:monospace;font-size:11px;color:#ccc;margin-bottom:6px;"></div>
+    <canvas id="qualityHist" width="600" height="180" style="width:100%;height:auto;background:#111;border-radius:4px;"></canvas>
+  </div>
+
   <div class="download-section" id="downloadSection">
     <div class="status" id="downloadStatus"></div>
     <div id="sha256Display" style="font-size:10px;word-break:break-all;color:#888;margin:8px 0;display:none;"></div>
@@ -140,7 +144,6 @@ video { display: block; width: 100%; }
 <script src="lib/reed-solomon.js"></script>
 <script src="lib/frame-range.js"></script>
 <script src="lib/sha256.js"></script>
-<script src="lib/rawgrid.js"></script>
 <script src="lib/colorgrid.js"></script>
 <script src="lib/receiver.js"></script>
 <script src="lib/jsQR.js"></script>
@@ -159,10 +162,10 @@ video { display: block; width: 100%; }
   var scanTimer = null;
   var completeFile = null;
   var receiverMode = 'colorgrid';
-  function isGridMode() { return receiverMode === 'rawgrid' || receiverMode === 'colorgrid'; }
-  function gridDecode(pixels, w, h) { return receiverMode === 'colorgrid' ? ColorGrid.decode(pixels, w, h) : RawGrid.decode(pixels, w, h); }
-  function gridLocate(pixels, w, h) { return receiverMode === 'colorgrid' ? ColorGrid.locateFinders(pixels, w, h) : RawGrid.locateFinders(pixels, w, h); }
-  function gridDebug() { return receiverMode === 'colorgrid' ? ColorGrid.getLastDebug() : RawGrid.getLastDebug(); }
+  function isGridMode() { return receiverMode === 'colorgrid'; }
+  function gridDecode(pixels, w, h) { return ColorGrid.decode(pixels, w, h); }
+  function gridLocate(pixels, w, h) { return ColorGrid.locateFinders(pixels, w, h); }
+  function gridDebug() { return ColorGrid.getLastDebug(); }
   btnStart.textContent = 'Start ColorGrid';
   var firstFrameTime = null;
   var transferFileSize = null;
@@ -180,15 +183,14 @@ video { display: block; width: 100%; }
     e.target.style.background = '#555';
     e.target.style.color = '#e0e0e0';
     receiverMode = e.target.dataset.mode;
-    var label = receiverMode === 'colorgrid' ? 'Start ColorGrid' : receiverMode === 'rawgrid' ? 'Start RawGrid' : receiverMode === 'screen' ? 'Start Screen Capture' : 'Start Camera';
+    var label = receiverMode === 'colorgrid' ? 'Start ColorGrid' : 'Start Camera';
     btnStart.textContent = label;
     // Show/hide reticle (only for camera mode)
     document.querySelector('.reticle').style.display = receiverMode === 'camera' ? '' : 'none';
   });
 
   btnStart.addEventListener('click', function() {
-    if (receiverMode === 'rawgrid' || receiverMode === 'colorgrid') startScreenCapture();
-    else if (receiverMode === 'screen') startScreenCapture();
+    if (receiverMode === 'colorgrid') startScreenCapture();
     else startCamera();
   });
 
@@ -230,6 +232,7 @@ video { display: block; width: 100%; }
       document.getElementById('missingSection').style.display = 'block';
       document.getElementById('missingBlocksSection').style.display = 'block';
       document.getElementById('diagSection').style.display = 'block';
+      document.getElementById('qualitySection').style.display = 'block';
 
       // Handle user stopping screen share
       stream.getVideoTracks()[0].addEventListener('ended', function() {
@@ -243,6 +246,7 @@ video { display: block; width: 100%; }
         document.getElementById('missingSection').style.display = 'none';
         document.getElementById('missingBlocksSection').style.display = 'none';
         document.getElementById('diagSection').style.display = 'none';
+        document.getElementById('qualitySection').style.display = 'none';
         document.getElementById('downloadSection').classList.remove('show');
       });
 
@@ -253,6 +257,86 @@ video { display: block; width: 100%; }
     } catch (err) {
       alert('Screen capture denied or cancelled.\n\n' + err.message);
     }
+  }
+
+  var qualityUpdateTick = 0;
+  function updateQualityDisplay() {
+    qualityUpdateTick++;
+    if (qualityUpdateTick % 5 !== 0) return;  // throttle
+    var qm = Receiver.getQualityMetrics();
+    if (!qm || qm.totalScans === 0) return;
+
+    var failRate = qm.totalScans > 0 ? (qm.badScanFrames / qm.totalScans * 100).toFixed(1) : '0.0';
+    var ber = qm.totalDataBits > 0 ? (qm.correctedBits / qm.totalDataBits).toExponential(2) : 'N/A';
+
+    var statsEl = document.getElementById('qualityStats');
+    statsEl.innerHTML = 'Scans: ' + qm.totalScans +
+      ' | Bad frames: ' + qm.badScanFrames + ' (' + failRate + '%)' +
+      ' | BER: ' + ber +
+      ' | R dev: ' + (qm.r ? qm.r.meanDev.toFixed(1) : '?') +
+      ' | G dev: ' + (qm.g ? qm.g.meanDev.toFixed(1) : '?') +
+      ' | B dev: ' + (qm.b ? qm.b.meanDev.toFixed(1) : '?');
+
+    // Draw histogram
+    var histCanvas = document.getElementById('qualityHist');
+    if (!histCanvas) return;
+    var ctx = histCanvas.getContext('2d');
+    var w = histCanvas.width, h = histCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    var colors = { r: '#f44336', g: '#4caf50', b: '#2196f3' };
+    var maxCnt = 1;
+    ['r', 'g', 'b'].forEach(function(ch) {
+      if (qm[ch]) {
+        for (var b = 0; b < 32; b++) {
+          if (qm[ch].hist[b] > maxCnt) maxCnt = qm[ch].hist[b];
+        }
+      }
+    });
+
+    var groupW = (w - 80) / 32;
+    var baseY = h - 20;
+    var maxH = h - 40;
+    var chanW = Math.max(1, Math.floor(groupW / 3) - 1);  // bar width per channel
+    var chanOff = [0, Math.floor(groupW / 3), Math.floor(2 * groupW / 3)];
+
+    // Grid lines
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 0.5;
+    for (var g = 0; g <= 4; g++) {
+      var gy = baseY - (g / 4) * maxH;
+      ctx.beginPath(); ctx.moveTo(40, gy); ctx.lineTo(w - 5, gy); ctx.stroke();
+    }
+
+    var channels = ['r', 'g', 'b'];
+    for (var ci = 0; ci < 3; ci++) {
+      var ch = channels[ci];
+      if (!qm[ch]) continue;
+      ctx.fillStyle = colors[ch];
+      for (var b = 0; b < 32; b++) {
+        var barH = (qm[ch].hist[b] / maxCnt) * maxH;
+        var bx = 40 + b * groupW + chanOff[ci];
+        ctx.fillRect(bx, baseY - barH, chanW, barH);
+      }
+    }
+
+    // Labels
+    ctx.fillStyle = '#888';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    for (var b = 0; b < 32; b += 4) {
+      ctx.fillText(String(b * 8), 40 + b * groupW + groupW * 2, baseY + 12);
+    }
+    ctx.fillText('deviation from ideal (0-255)', w / 2, h - 2);
+
+    // Legend
+    ctx.textAlign = 'left';
+    var lx = 45;
+    ['r', 'g', 'b'].forEach(function(ch) {
+      ctx.fillStyle = colors[ch];
+      ctx.fillText(ch.toUpperCase(), lx, 14);
+      lx += 18;
+    });
   }
 
   function startScanning(screenMode) {
@@ -342,14 +426,14 @@ video { display: block; width: 100%; }
             if (regionW > 0 && regionH > 0) {
               imageData = ctx.getImageData(qrRegion.x, qrRegion.y, regionW, regionH);
               var skip = false;
-              if (receiverMode !== 'rawgrid' && receiverMode !== 'colorgrid') {
+              if (!isGridMode()) {
                 var ph = pixelHash(imageData.data);
                 if (seenHashes[ph]) { hashHits++; skip = true; }
               }
               if (!skip) {
                 if (isGridMode()) {
-                  var rawBytes = gridDecode(imageData.data, imageData.width, imageData.height);
-                  qrData = rawBytes ? { binaryData: rawBytes } : null;
+                  var decodeRes = gridDecode(imageData.data, imageData.width, imageData.height);
+                  qrData = decodeRes ? { binaryData: decodeRes.data, _channelDev: decodeRes.channelDev } : null;
                 } else {
                   qrData = jsQR(imageData.data, imageData.width, imageData.height);
                 }
@@ -364,22 +448,22 @@ video { display: block; width: 100%; }
             if (cropMissCount >= 5) { qrRegion = null; cropMissCount = 0; }
             imageData = ctx.getImageData(0, 0, scanW, scanH);
             var dupe = false;
-            if (receiverMode !== 'rawgrid' && receiverMode !== 'colorgrid') {
+            if (!isGridMode()) {
               var fph = pixelHash(imageData.data);
               if (seenHashes[fph]) { hashHits++; dupe = true; }
             }
             if (!dupe) {
               if (isGridMode()) {
                 var rb = gridDecode(imageData.data, imageData.width, imageData.height);
-                qrData = rb ? { binaryData: rb } : null;
+                qrData = rb ? { binaryData: rb.data, _channelDev: rb.channelDev } : null;
               } else {
                 qrData = jsQR(imageData.data, imageData.width, imageData.height);
               }
             }
           } else {
             cropMissCount = 0;
-            // Cache pixel hash to skip jsQR on duplicate frames (rawgrid skips dedup)
-            if (imageData && receiverMode !== 'rawgrid' && receiverMode !== 'colorgrid') seenHashes[pixelHash(imageData.data)] = true;
+            // Cache pixel hash to skip jsQR on duplicate frames
+            if (imageData && !isGridMode()) seenHashes[pixelHash(imageData.data)] = true;
           }
           totalScanAttempts++;
 
@@ -413,16 +497,27 @@ video { display: block; width: 100%; }
 
           var frameBytes = new Uint8Array(qrData.binaryData);
 
-          // Inner FEC decode for grid modes
+          // Inner FEC decode for ColorGrid
           var innerOk = true;
+          var innerBitErrors = 0;
+          var innerDataBits = 0;
           if (isGridMode()) {
-            var gridCap = receiverMode === 'colorgrid' ? ColorGrid.dataCells() : RawGrid.dataCells();
+            var gridCap = ColorGrid.dataCells();
             var decoded = FrameProtocol.decodeInnerFEC(frameBytes, gridCap);
             if (!decoded) innerOk = false;
-            else frameBytes = decoded.data;
+            else {
+              innerBitErrors = decoded.bitErrors || 0;
+              innerDataBits = FrameProtocol.innerDataCapacity(gridCap) * 8;
+              frameBytes = decoded.data;
+            }
           }
 
           if (innerOk) {
+            // Record quality: channel deviation + bit errors
+            if (isGridMode() && qrData._channelDev) {
+              Receiver.recordScanQuality(qrData._channelDev, innerBitErrors, innerDataBits);
+            }
+
             var result = Receiver.ingestFrameBinary(frameBytes);
 
           var ingestResult = result.status;
@@ -443,26 +538,28 @@ video { display: block; width: 100%; }
           } else if (result.status === 'bad') {
             flashIndicator('fail');
           }
-          // Store for diagnostic display
           window._lastIngest = { status: ingestResult, len: frameBytes.length, mode: receiverMode };
-          // Update rawgrid status immediately
           if (isGridMode()) {
             var rgEl = document.getElementById('rgStatus');
-            var modeLabel = receiverMode === 'colorgrid' ? 'ColorGrid' : 'RawGrid';
-            rgEl.textContent = modeLabel + ': decoded ' + frameBytes.length + 'B | ingest: ' + ingestResult;
+            var qm = Receiver.getQualityMetrics();
+            var berStr = qm && qm.totalDataBits > 0 ? ' BER=' + (qm.correctedBits / qm.totalDataBits).toExponential(2) : '';
+            rgEl.textContent = 'ColorGrid: decoded ' + frameBytes.length + 'B | ingest: ' + ingestResult + berStr;
             rgEl.style.color = ingestResult === 'new' ? '#4caf50' : ingestResult === 'bad' ? '#f44336' : '#ff9800';
           }
-          } // close if (innerOk)
+          } else {
+            // Inner FEC failed
+            if (isGridMode()) Receiver.recordBadScan();
+          }
         } else if (qrData) {
           qrDetected++;
         }
 
         lastScanDuration = Date.now() - scanStart;
 
-        // Update rawgrid status every scan
+        // Update ColorGrid status every scan
         if (isGridMode() && (!qrData || !qrData.binaryData || qrData.binaryData.length === 0)) {
           var rgEl = document.getElementById('rgStatus');
-          var pair = gridLocate(imageData.data, imageData.width, imageData.height);
+          var pair = ColorGrid.locateFinders(imageData.data, imageData.width, imageData.height);
           var rgDbg = gridDebug();
           var info = 'scan ' + totalScanAttempts + ' | rowHits=' + (rgDbg ? rgDbg.rowHits : '?') + ' cand=' + (rgDbg ? rgDbg.candidates : '?') + ' finders=' + (rgDbg ? rgDbg.finderCount : '?');
           if (rgDbg && rgDbg.topLeft10 && rgDbg.topLeft10.length) {
@@ -595,6 +692,8 @@ video { display: block; width: 100%; }
       document.getElementById('missingSection').style.display = 'none';
       document.getElementById('missingBlocksSection').style.display = 'none';
     }
+
+    updateQualityDisplay();
   }
 
   function showProcessing() {
@@ -614,16 +713,32 @@ video { display: block; width: 100%; }
       var speedKBps = (result.speedBps / 1024).toFixed(1);
       speedInfo = ' | ' + result.elapsedSeconds.toFixed(1) + 's | ' + speedKBps + ' KB/s';
     }
-    downloadStatus.textContent = 'File ready — compare SHA-256 with sender' + speedInfo;
 
-    // Show SHA-256
+    // SHA-256 comparison
     var shaDiv = document.getElementById('sha256Display');
     shaDiv.style.display = 'block';
-    shaDiv.textContent = 'SHA-256: ' + (result.sha256hex || '');
+    if (result.sha256Match === true) {
+      downloadStatus.className = 'status ok';
+      downloadStatus.textContent = 'SHA-256 MATCH — File verified' + speedInfo;
+      shaDiv.style.color = '#4caf50';
+      shaDiv.textContent = 'SHA-256: ' + result.sha256hex;
+    } else if (result.sha256Match === false) {
+      downloadStatus.className = 'status warn';
+      downloadStatus.textContent = 'SHA-256 MISMATCH — Do not trust this file!' + speedInfo;
+      shaDiv.style.color = '#f44336';
+      shaDiv.textContent = 'Computed: ' + result.sha256hex + '\nSender:   ' + (result.senderSHA256 || 'N/A');
+    } else {
+      downloadStatus.textContent = 'File ready (no sender hash to compare)' + speedInfo;
+      shaDiv.style.color = '#ff9800';
+      shaDiv.textContent = 'SHA-256: ' + (result.sha256hex || '');
+    }
 
-    // Show filename input
+    // Auto-fill filename
     var fnInput = document.getElementById('filenameInput');
     fnInput.style.display = 'block';
+    if (result.filename && result.filename.length > 0) {
+      fnInput.value = result.filename;
+    }
 
     btnDownload.style.display = 'block';
     btnDownload.onclick = function() {
