@@ -1083,7 +1083,8 @@ input[type=file] { display: none; }
               // ColorGrid: apply inner FEC correction before comparing
               if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
                 var sc = senderMode === 'c4grid' ? C4Grid.dataCells() : ColorGrid.dataCells();
-                var innerResult = FrameProtocol.decodeInnerFEC(recovered, sc);
+                var innerK3 = senderMode === 'c4grid' ? 212 : undefined;
+                var innerResult = FrameProtocol.decodeInnerFEC(recovered, sc, innerK3);
                 if (!innerResult) {
                   selfTestFail++;
                   var hexBits = '';
@@ -1094,7 +1095,7 @@ input[type=file] { display: none; }
                   selfTestFailLog.push(entry);
                   innerSkip = true;
                 } else {
-                  var reenc = FrameProtocol.encodeInnerFEC(innerResult.data, sc);
+                  var reenc = FrameProtocol.encodeInnerFEC(innerResult.data, sc, innerK3);
                   if (reenc) {
                     var paddedReenc = new Uint8Array(sc);
                     paddedReenc.set(reenc);

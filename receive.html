@@ -505,11 +505,12 @@ video { display: block; width: 100%; }
           var innerDataBits = 0;
           if (isGridMode()) {
             var gridCap = receiverMode === 'c4grid' ? C4Grid.dataCells() : ColorGrid.dataCells();
-            var decoded = FrameProtocol.decodeInnerFEC(frameBytes, gridCap);
+            var innerK4 = receiverMode === 'c4grid' ? 212 : undefined;
+            var decoded = FrameProtocol.decodeInnerFEC(frameBytes, gridCap, innerK4);
             if (!decoded) innerOk = false;
             else {
               innerBitErrors = decoded.bitErrors || 0;
-              innerDataBits = FrameProtocol.innerDataCapacity(gridCap) * 8;
+              innerDataBits = FrameProtocol.innerDataCapacity(gridCap, innerK4) * 8;
               frameBytes = decoded.data;
             }
           }
