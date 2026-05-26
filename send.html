@@ -116,6 +116,7 @@ input[type=file] { display: none; }
         <div class="mode-selector" id="senderMode" style="margin:0;border:none;background:none;padding:0;">
           <button class="mode-btn" data-mode="camera">Camera</button>
           <button class="mode-btn active" data-mode="colorgrid">ColorGrid</button>
+          <button class="mode-btn" data-mode="c4grid">C4Grid</button>
         </div>
       </div>
       <div class="setting-row">
@@ -243,6 +244,7 @@ input[type=file] { display: none; }
 <script src="lib/frame-range.js"></script>
 <script src="lib/sha256.js"></script>
 <script src="lib/colorgrid.js"></script>
+<script src="lib/c4grid.js"></script>
 <script src="lib/sender.js"></script>
 <script src="lib/qrcode.js"></script>
 <script src="lib/jsQR.js"></script>
@@ -312,7 +314,8 @@ input[type=file] { display: none; }
 
   var modeDefaults = {
     camera:    { interval: 150, qrVersion: 10, fec: '5,1' },
-    colorgrid: { interval: 25,  qrVersion: 0,  fec: '5,2' }
+    colorgrid: { interval: 25,  qrVersion: 0,  fec: '5,2' },
+    c4grid:    { interval: 25,  qrVersion: 0,  fec: '5,2' }
   };
 
   function applyModeDefaults(mode) {
@@ -321,9 +324,9 @@ input[type=file] { display: none; }
     document.getElementById('optInterval').value = String(d.interval);
     document.getElementById('optQRVersion').value = String(d.qrVersion);
     document.getElementById('optFEC').value = d.fec;
-    var isColorGrid = mode === 'colorgrid';
-    document.getElementById('optQRVersion').parentNode.style.display = isColorGrid ? 'none' : '';
-    document.getElementById('optECLevel').parentNode.style.display = isColorGrid ? 'none' : '';
+    var isGrid = mode === 'colorgrid' || mode === 'c4grid';
+    document.getElementById('optQRVersion').parentNode.style.display = isGrid ? 'none' : '';
+    document.getElementById('optECLevel').parentNode.style.display = isGrid ? 'none' : '';
     // Sync live interval slider in stage3
     var liveSel = document.getElementById('optIntervalLive');
     if (liveSel) liveSel.value = String(d.interval);
@@ -349,7 +352,7 @@ input[type=file] { display: none; }
       fecN: parseInt(fecParts[1]),
       ecLevel: document.getElementById('optECLevel').value,
       mode: senderMode,
-      cellPx: senderMode === 'colorgrid' ? 6 : 0
+      cellPx: (senderMode === 'colorgrid' || senderMode === 'c4grid') ? 6 : 0
     };
   }
 
@@ -932,7 +935,7 @@ input[type=file] { display: none; }
     updateBlockGridInfo();
 
     var qrSize;
-    if (senderMode === 'colorgrid') {
+    if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
       qrSize = Math.min(window.innerHeight - 40, 500);
       qrWrapper.innerHTML = '';
     } else {
@@ -975,11 +978,12 @@ input[type=file] { display: none; }
         binary += String.fromCharCode(frame[i]);
       }
 
-      if (senderMode === 'colorgrid') {
+      if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
         var cellPx = state.cellPx || 6;
         var gridCanvas = window._gridCanvas;
         if (!gridCanvas) { gridCanvas = document.createElement('canvas'); qrWrapper.appendChild(gridCanvas); window._gridCanvas = gridCanvas; }
-        ColorGrid.render(frame, cellPx, gridCanvas);
+        if (senderMode === 'c4grid') C4Grid.render(frame, cellPx, gridCanvas);
+        else ColorGrid.render(frame, cellPx, gridCanvas);
       } else {
         qrCode.makeCode(binary);
       }
@@ -1006,10 +1010,10 @@ input[type=file] { display: none; }
             var imgData = ctx2.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
             var recovered = null;
             var rgDebug = null;
-            if (senderMode === 'colorgrid') {
-              var decodeResult = ColorGrid.decode(imgData.data, imgData.width, imgData.height);
+            if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
+              var decodeResult = senderMode === 'c4grid' ? C4Grid.decode(imgData.data, imgData.width, imgData.height) : ColorGrid.decode(imgData.data, imgData.width, imgData.height);
               recovered = decodeResult ? decodeResult.data : null;
-              rgDebug = ColorGrid.getLastDebug();
+              rgDebug = senderMode === 'c4grid' ? C4Grid.getLastDebug() : ColorGrid.getLastDebug();
             } else {
               var decodedQr = jsQR(imgData.data, imgData.width, imgData.height);
               if (decodedQr && decodedQr.binaryData && decodedQr.binaryData.length > 0) {
@@ -1021,9 +1025,64 @@ input[type=file] { display: none; }
             }
             if (recovered) {
               var innerSkip = false;
+              // Raw pre-FEC diff per plane
+              var firstDiff = -1, diffCount = 0;
+              var planeErrs = [0,0,0,0,0,0]; // R_hi G_hi B_hi R_lo G_lo B_lo
+              var planeSize = 1213;
+              if (senderMode === 'c4grid' && recovered.length >= 7278) {
+                for (var ri2 = 0; ri2 < recovered.length; ri2++) {
+                  if (recovered[ri2] !== frame[ri2]) {
+                    diffCount++; if (firstDiff < 0) firstDiff = ri2;
+                    planeErrs[Math.floor(ri2 / planeSize)]++;
+                  }
+                }
+                window._rawDiff = 'R_hi:' + planeErrs[0] + ' R_lo:' + planeErrs[1] + ' G_hi:' + planeErrs[2] + ' G_lo:' + planeErrs[3] + ' B_hi:' + planeErrs[4] + ' B_lo:' + planeErrs[5] + ' first@' + firstDiff;
+                // Pixel diagnostic: sample a few cell positions
+                var pixInfo = '';
+                if (senderMode === 'c4grid' && firstDiff >= 0) {
+                  var errPlane = Math.floor(firstDiff / 1213);
+                  var errCellBase = (firstDiff % 1213) * 8;
+                  for (var ci2 = 0; ci2 < 8 && pixInfo === ''; ci2++) {
+                    var ci3 = errCellBase + ci2;
+                    var expBit = (frame[firstDiff] >> (7-ci2)) & 1;
+                    var gotBit = (recovered[firstDiff] >> (7-ci2)) & 1;
+                    if (expBit !== gotBit) {
+                      // Find cell's pixel in canvas using same geometry as decode
+                      var dbg = C4Grid.getLastDebug();
+                      if (dbg && dbg.originX != null) {
+                        // Reconstruct cell position from piTable logic
+                        var msX2 = dbg.msX, msY2 = dbg.msY;
+                        var ox2 = dbg.originX, oy2 = dbg.originY;
+                        // Find (row,col) for cell ci3
+                        var ri2 = 0, ci2b = 0, bii = 0;
+                        for (var rr = 0; rr < 100 && bii <= ci3; rr++) {
+                          for (var cc = 0; cc < 100 && bii <= ci3; cc++) {
+                            if (!(rr<8&&cc<8) && !(rr>=92&&cc>=92) && rr!==0 && cc!==0) {
+                              if (bii === ci3) { ri2 = rr; ci2b = cc; }
+                              bii++;
+                            }
+                          }
+                        }
+                        var px2 = Math.round(ox2 + (ci2b + 0.5) * msX2);
+                        var py2 = Math.round(oy2 + (ri2 + 0.5) * msY2);
+                        var poff = (py2 * imgData.width + px2) * 4;
+                        if (poff+2 < imgData.data.length) {
+                          pixInfo = ' cell' + ci3 + ' exp=' + expBit + ' got=' + gotBit + ' pxR=' + imgData.data[poff] + ' pxG=' + imgData.data[poff+1] + ' pxB=' + imgData.data[poff+2];
+                        }
+                      }
+                    }
+                  }
+                }
+                if (pixInfo) window._rawDiff += ' ' + pixInfo;
+              } else {
+                for (var ri2 = 0; ri2 < recovered.length; ri2++) {
+                  if (recovered[ri2] !== frame[ri2]) { diffCount++; if (firstDiff < 0) firstDiff = ri2; }
+                }
+                window._rawDiff = firstDiff >= 0 ? 'diff @byte[' + firstDiff + '] expect ' + frame[firstDiff].toString(16) + ' got ' + recovered[firstDiff].toString(16) + ' total ' + diffCount + ' errs' : 'clean';
+              }
               // ColorGrid: apply inner FEC correction before comparing
-              if (senderMode === 'colorgrid') {
-                var sc = ColorGrid.dataCells();
+              if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
+                var sc = senderMode === 'c4grid' ? C4Grid.dataCells() : ColorGrid.dataCells();
                 var innerResult = FrameProtocol.decodeInnerFEC(recovered, sc);
                 if (!innerResult) {
                   selfTestFail++;
@@ -1031,7 +1090,8 @@ input[type=file] { display: none; }
                   for (var hi2 = 0; hi2 < Math.min(8, recovered.length); hi2++) {
                     hexBits += ('00' + recovered[hi2].toString(16)).slice(-2);
                   }
-                  selfTestFailLog.push('#' + (selfTestOk + selfTestFail) + ' UNCORRECTABLE ' + hexBits + '...');
+                  var entry = '#' + (selfTestOk + selfTestFail) + ' UNCORRECTABLE ' + hexBits + '... ' + window._rawDiff;
+                  selfTestFailLog.push(entry);
                   innerSkip = true;
                 } else {
                   var reenc = FrameProtocol.encodeInnerFEC(innerResult.data, sc);
@@ -1047,7 +1107,7 @@ input[type=file] { display: none; }
                 for (var bi = 0; bi < frame.length && match; bi++) {
                   if (frame[bi] !== recovered[bi]) match = false;
                 }
-              if (senderMode === 'colorgrid') {
+              if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
                 if (match) {
                   selfTestOk++;
                 } else {
@@ -1089,7 +1149,7 @@ input[type=file] { display: none; }
                 }
               }
               } // close if (!innerSkip)
-            } else if (senderMode === 'colorgrid') {
+            } else if (senderMode === 'colorgrid' || senderMode === 'c4grid') {
               // Decode returned null — accumulate failure
               selfTestFail++;
               var hexHead = '', hexTail = '';
